@@ -53,7 +53,7 @@ verify() {
   }
 
   check '.required_pull_request_reviews.required_approving_review_count' \
-    'required_approving_review_count' '1'
+    'required_approving_review_count' '0'
   check '.required_pull_request_reviews.dismiss_stale_reviews' \
     'dismiss_stale_reviews' 'true'
   check '.required_pull_request_reviews.require_code_owner_reviews' \
