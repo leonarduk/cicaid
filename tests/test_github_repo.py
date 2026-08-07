@@ -24,6 +24,22 @@ def test_get_repo_info_parses_remote_url(remote_url, expected):
         assert get_repo_info() == expected
 
 
+@pytest.mark.parametrize(
+    "remote_url,expected",
+    [
+        ("https://github.com/leonarduk/cicaid.wiki.git", ("leonarduk", "cicaid")),
+        ("https://github.com/leonarduk/cicaid.wiki", ("leonarduk", "cicaid")),
+        ("git@github.com:leonarduk/cicaid.wiki.git", ("leonarduk", "cicaid")),
+        ("git@github.com:leonarduk/cicaid.wiki.git\n", ("leonarduk", "cicaid")),
+        ("https://github.com/leonarduk/some-project.wiki.git", ("leonarduk", "some-project")),
+    ],
+)
+def test_get_repo_info_strips_wiki_suffix(remote_url, expected):
+    """When inside a .wiki repo, the repo name drops the .wiki suffix."""
+    with patch("subprocess.run", return_value=_completed(remote_url)):
+        assert get_repo_info() == expected
+
+
 def test_get_repo_info_raises_on_non_github_remote():
     with patch("subprocess.run", return_value=_completed("https://gitlab.com/foo/bar.git")):
         with pytest.raises(ValueError):
