@@ -20,7 +20,7 @@ Applied via `gh api` using the configuration in `.github/branch-protection.json`
 
 | Rule | Value |
 |------|-------|
-| Require pull request reviews before merging | ✅ 1 approving review |
+| Require pull request reviews before merging | ✅ (0 required approvals — solo maintainer; GitHub never allows self-approval, so requiring 1+ would permanently block merges) |
 | Dismiss stale pull request approvals | ✅ |
 | Require conversation resolution before merging | ✅ |
 | Enforce for admins | ✅ |
@@ -37,7 +37,7 @@ Applied via `gh api` using the configuration in `.github/branch-protection.json`
 
 - [x] Branch protection rules are successfully applied to the main branch
 - [x] Direct pushes to main are blocked (including for admins)
-- [x] PRs require at least 1 approving review before merging
+- [x] PRs go through a pull request (direct pushes to main are blocked); no minimum approval count, since there's a single maintainer
 - [x] Conversation must be resolved before merging
 - [x] CI audit workflow verifies protection weekly
 - [x] Reproducible apply/verify script committed

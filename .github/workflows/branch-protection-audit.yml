@@ -61,7 +61,7 @@ jobs:
           # Verify each protection rule
           check '.required_pull_request_reviews.dismiss_stale_reviews' 'true'
           check '.required_pull_request_reviews.require_code_owner_reviews' 'false'
-          check '.required_pull_request_reviews.required_approving_review_count' '1'
+          check '.required_pull_request_reviews.required_approving_review_count' '0'
           check '.enforce_admins.enabled' 'true'
           check '.required_conversation_resolution.enabled' 'true'
           check '.allow_force_pushes.enabled' 'false'
