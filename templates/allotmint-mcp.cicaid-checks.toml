@@ -1,0 +1,12 @@
+# Example .cicaid-checks.toml for allotmint-mcp (Java/Spring Boot/Maven).
+#
+# run-ci-checks has no built-in notion of Maven -- its DEFAULT_CHECKS fallback is
+# allotmint's own pytest/npm/CDK check list, which does not apply here at all. Copy
+# this file to the repo root as `.cicaid-checks.toml` so `run-ci-checks` picks it up
+# automatically instead of falling back to the (wrong-language) default.
+
+[[checks]]
+name = "build"
+description = "Maven build, tests, and coverage report (mirrors g_run_tests.ps1)"
+workflow = ".github/workflows/build.yml"
+commands = ["./mvnw verify"]

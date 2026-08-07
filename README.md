@@ -76,9 +76,21 @@ the `.ps1` calling convention; they are not part of the installed package.
 `pytest tests --cov=backend`, which encodes `allotmint`'s own test layout. Treat it
 as a starting point to adapt per repo, not a shared command.
 
-`run-ci-checks` similarly ships with allotmint's own CI check definitions
-(`.github/workflows/backend-integration.yml` etc.) baked into its `--list` output;
-other consumer repos will want their own check list until that becomes configurable.
+`run-ci-checks` reads its check list from a `.cicaid-checks.toml` file in the target
+repo's root (see `templates/allotmint-mcp.cicaid-checks.toml` for a Maven/Java
+example). A repo with no config file falls back to `DEFAULT_CHECKS` in
+[`h_run_ci_checks.py`](src/cicaid_devtools/h_run_ci_checks.py) — allotmint's own
+pytest/npm/CDK checks, which is *only* correct for allotmint itself. Every other
+consumer repo (allotmint-mcp, ai-systems-lab, ...) should add its own
+`.cicaid-checks.toml` rather than rely on that fallback. Format:
+
+```toml
+[[checks]]
+name = "build"
+description = "What this check verifies"
+workflow = ".github/workflows/whatever.yml"   # informational only
+commands = ["./mvnw verify"]                  # run via `shell=True`, one at a time
+```
 
 ## Package layout
 
