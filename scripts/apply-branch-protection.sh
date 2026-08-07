@@ -51,6 +51,8 @@ verify() {
     'required_approving_review_count' '1'
   check '.required_pull_request_reviews.dismiss_stale_reviews' \
     'dismiss_stale_reviews' 'true'
+  check '.required_pull_request_reviews.require_code_owner_reviews' \
+    'require_code_owner_reviews' 'false'
   check '.required_conversation_resolution.enabled' \
     'required_conversation_resolution' 'true'
   check '.enforce_admins.enabled' \
