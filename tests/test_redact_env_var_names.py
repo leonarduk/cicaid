@@ -252,3 +252,32 @@ class TestRedactEnvVarNames:
         assert "Unauthorized" in out  # no env var, detail preserved
         assert "[REDACTED_ENV_VAR]" not in out
         assert "401" in out
+
+    # ------------------------------------------------------------------
+    # Exception __init__ edge cases: non-string args, multiple args, no args
+    # ------------------------------------------------------------------
+
+    def test_provider_auth_error_preserves_non_string_first_arg(self):
+        """Exception with non-string first arg passes through unchanged."""
+        with pytest.raises(review_common.ProviderAuthError) as exc_info:
+            raise review_common.ProviderAuthError(401, "Unauthorized")
+        assert exc_info.value.args[0] == 401
+        assert exc_info.value.args[1] == "Unauthorized"
+
+    def test_provider_outage_error_multiple_string_args_redacts_only_first(self):
+        """Only the first string arg is redacted; subsequent args pass through."""
+        with pytest.raises(review_common.ProviderOutageError) as exc_info:
+            raise review_common.ProviderOutageError(
+                "Bad GITHUB_TOKEN", "Keep this", "DEEPSEEK_API_KEY ignored"
+            )
+        msg = str(exc_info.value)
+        assert "GITHUB_TOKEN" not in msg
+        assert "[REDACTED_ENV_VAR]" in msg
+        assert exc_info.value.args[1] == "Keep this"
+        assert exc_info.value.args[2] == "DEEPSEEK_API_KEY ignored"
+
+    def test_provider_auth_error_no_args_uses_default(self):
+        """Exception with no args should still construct (RuntimeError behavior)."""
+        with pytest.raises(review_common.ProviderAuthError) as exc_info:
+            raise review_common.ProviderAuthError()
+        assert str(exc_info.value) == ""

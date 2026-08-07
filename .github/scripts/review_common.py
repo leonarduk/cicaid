@@ -59,9 +59,11 @@ TRUNCATION_NOTICE_TEMPLATE = (
 # suffixes (`_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`, `_PASS`, `_AUTH`,
 # `_CREDENTIAL`, `_API`).  Requires at least one underscore and all-caps
 # characters so legitimate config keys (e.g. `MAX_RETRIES`, `PR_TITLE`)
-# are not redacted.  Applied to stderr log messages only; user-facing
-# stdout output (e.g. `emit_missing_key_notice`) intentionally names the
-# secret so the repo admin knows what to configure.
+# are not redacted.  Applied to stderr log messages and to stdout messages
+# that echo provider error details.  ``emit_missing_key_notice`` intentionally
+# does NOT redact the key name so the repo admin knows which secret to
+# configure; ``emit_invalid_key_notice`` DOES redact its ``detail`` argument
+# because it contains an API error body that may leak env var names.
 _ENV_VAR_NAME_RE = re.compile(
     r'\b[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)*'
     r'_(?:TOKEN|KEY|SECRET|PASS(?:WORD)?|AUTH|CREDENTIAL|API)'
@@ -244,8 +246,8 @@ class ProviderOutageError(RuntimeError):
     def __init__(self, *args):
         # Redact env var names before calling the parent RuntimeError
         # constructor so the message is safe regardless of who catches this.
-        if args:
-            args = (redact_env_var_names(str(args[0])),) + args[1:]
+        if args and isinstance(args[0], str):
+            args = (redact_env_var_names(args[0]),) + args[1:]
         super().__init__(*args)
 
 
@@ -266,8 +268,8 @@ class ProviderAuthError(RuntimeError):
     def __init__(self, *args):
         # Redact env var names before calling the parent RuntimeError
         # constructor so the message is safe regardless of who catches this.
-        if args:
-            args = (redact_env_var_names(str(args[0])),) + args[1:]
+        if args and isinstance(args[0], str):
+            args = (redact_env_var_names(args[0]),) + args[1:]
         super().__init__(*args)
 
 
@@ -584,25 +586,19 @@ def fetch_review(
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned {exc.code}: {body}"))
             if exc.code in (401, 403):
                 raise ProviderAuthError(
-                    redact_env_var_names(
-                        f"{provider_label} API returned {exc.code}: {body}"
-                    )
+                    f"{provider_label} API returned {exc.code}: {body}"
                 ) from exc
             if exc.code not in RETRYABLE_HTTP_STATUSES:
                 raise SystemExit(1) from exc
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
-                    redact_env_var_names(
-                        f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
-                    )
+                    f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
                 ) from exc
         except urllib.error.URLError as exc:
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API request failed: {exc.reason}"))
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
-                    redact_env_var_names(
-                        f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
-                    )
+                    f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
                 ) from exc
         except json.JSONDecodeError as exc:
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned non-JSON response: {exc}"))
