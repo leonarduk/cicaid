@@ -14,7 +14,7 @@ To safeguard against accidental or malicious modifications that could disrupt th
 
 ## How
 
-Applied branch protection rules via the GitHub API (`gh api`). The configuration is stored in `.github/branch-protection.json`.
+Applied via `gh api` using the configuration in `.github/branch-protection.json`. A reproducible script is available at `scripts/apply-branch-protection.sh`.
 
 ## Rules applied
 
@@ -23,13 +23,21 @@ Applied branch protection rules via the GitHub API (`gh api`). The configuration
 | Require pull request reviews before merging | ✅ 1 approving review |
 | Dismiss stale pull request approvals | ✅ |
 | Require conversation resolution before merging | ✅ |
+| Enforce for admins | ✅ |
 | Allow force pushes | ❌ Disabled |
 | Allow deletions | ❌ Disabled |
-| Enforce for admins | ❌ Not enforced |
+
+## Verification
+
+- **CI:** `.github/workflows/branch-protection-audit.yml` runs weekly and on config changes to verify rules haven't drifted.
+- **CLI:** `./scripts/apply-branch-protection.sh --verify` checks the live rules against `.github/branch-protection.json`.
+- **Manual:** `./scripts/apply-branch-protection.sh` (re-)applies rules and verifies them.
 
 ## Success looks like
 
 - [x] Branch protection rules are successfully applied to the main branch
-- [x] Direct pushes to main are blocked
+- [x] Direct pushes to main are blocked (including for admins)
 - [x] PRs require at least 1 approving review before merging
 - [x] Conversation must be resolved before merging
+- [x] CI audit workflow verifies protection weekly
+- [x] Reproducible apply/verify script committed
