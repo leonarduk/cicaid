@@ -42,15 +42,22 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "publish-pr": ("cicaid_devtools.lib.publish_pr", "Publish a PR from the current branch"),
 }
 
+# Numeric shortcut -> command name, derived from COMMANDS insertion order (1-indexed).
+NUMERIC_SHORTCUTS: dict[str, str] = {
+    str(i): name for i, name in enumerate(COMMANDS, start=1)
+}
+
 
 def print_help() -> None:
     """Print the command list, e.g. for `cicaid` with no arguments."""
-    print("Usage: cicaid <command> [args...]")
+    print("Usage: cicaid <command|number> [args...]")
+    print("       cicaid sync-issues         (or: cicaid 1) — sync GitHub issues")
     print("       cicaid <command> --help    (that command's full flags)\n")
     print("Commands:")
     width = max(len(name) for name in COMMANDS)
-    for name, (_, description) in COMMANDS.items():
-        print(f"  {name.ljust(width)}  {description}")
+    for i, (name, (_, description)) in enumerate(COMMANDS.items(), start=1):
+        label = f"{name} ({i})"
+        print(f"  {label.ljust(width + 5)}  {description}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,6 +69,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     command, rest = argv[0], argv[1:]
+    # Resolve numeric shortcuts to their corresponding command names.
+    if command in NUMERIC_SHORTCUTS:
+        command = NUMERIC_SHORTCUTS[command]
     if command not in COMMANDS:
         print(f"Unknown command: {command!r}\n", file=sys.stderr)
         print_help()
