@@ -21,7 +21,7 @@ def test_no_args_prints_help(capsys):
     assert "Usage: cicaid <command|number>" in out
     assert "(or: cicaid 1)" in out
     assert "sync-issues (1)" in out
-    assert "run-ci-checks (7)" in out
+    assert "run-ci-checks (9)" in out
 
 
 @pytest.mark.parametrize("flag", ["-h", "--help", "help"])
@@ -86,8 +86,8 @@ def test_none_return_from_target_treated_as_success(monkeypatch):
     assert cli.main(["publish-pr"]) == 0
 
 
-def test_numeric_shortcut_dispatches_to_correct_command(monkeypatch):
-    """`cicaid 1` should dispatch to sync-issues, `cicaid 15` to publish-pr."""
+def test_numeric_shortcut_dispatches_to_correct_command(monkeypatch, capsys):
+    """`cicaid 1` should dispatch to sync-issues, `cicaid 15` to dependabot-auto-merge."""
     resolved: list[str] = []
 
     class FakeModule:
@@ -101,17 +101,20 @@ def test_numeric_shortcut_dispatches_to_correct_command(monkeypatch):
     # First command (sync-issues)
     assert cli.main(["1"]) == 0
     assert resolved[-1] == "sync-issues"
+    assert "Running: cicaid sync-issues" in capsys.readouterr().out
 
-    # Last command (publish-pr)
+    # Last command (dependabot-auto-merge)
     assert cli.main(["15"]) == 0
-    assert resolved[-1] == "publish-pr"
+    assert resolved[-1] == "dependabot-auto-merge"
+    assert "Running: cicaid dependabot-auto-merge" in capsys.readouterr().out
 
-    # Middle command (run-ci-checks, position 7)
-    assert cli.main(["7"]) == 0
+    # Middle command (run-ci-checks, position 9)
+    assert cli.main(["9"]) == 0
     assert resolved[-1] == "run-ci-checks"
+    assert "Running: cicaid run-ci-checks" in capsys.readouterr().out
 
 
-def test_numeric_shortcut_passes_remaining_args(monkeypatch):
+def test_numeric_shortcut_passes_remaining_args(monkeypatch, capsys):
     calls: list[list[str]] = []
 
     class FakeModule:
@@ -121,8 +124,9 @@ def test_numeric_shortcut_passes_remaining_args(monkeypatch):
             return 0
 
     monkeypatch.setattr(cli.importlib, "import_module", lambda name: FakeModule)
-    assert cli.main(["4", "123"]) == 0
+    assert cli.main(["6", "123"]) == 0
     assert calls == [["work-on-issue", "123"]]
+    assert "Running: cicaid work-on-issue" in capsys.readouterr().out
 
 
 def test_numeric_shortcut_help_displays_numbers(capsys):
@@ -132,7 +136,7 @@ def test_numeric_shortcut_help_displays_numbers(capsys):
     assert "Usage: cicaid <command|number>" in out
     assert "(or: cicaid 1)" in out
     assert "sync-issues (1)" in out
-    assert "publish-pr (15)" in out
+    assert "publish-pr (12)" in out
 
 
 def test_numeric_shortcut_out_of_range_is_unknown(capsys):
