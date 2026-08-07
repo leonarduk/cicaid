@@ -1,0 +1,78 @@
+name: Branch Protection Audit
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Every Monday at 06:00 UTC
+  workflow_dispatch:      # Manual trigger
+  pull_request:
+    paths:
+      - '.github/branch-protection.json'
+      - '.github/workflows/branch-protection-audit.yml'
+      - 'scripts/apply-branch-protection.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify main branch protection
+        env:
+          GH_TOKEN: ${{ secrets.gh_token }}
+        run: |
+          set -euo pipefail
+
+          # The branch protection GET endpoint requires an authenticated
+          # token belonging to a user with admin rights on the repo — the
+          # default GITHUB_TOKEN has no permission scope for this at all
+          # (unlike contents/issues/pull-requests, "administration" isn't a
+          # grantable GITHUB_TOKEN permission), so this needs a repo-admin
+          # PAT stored as the `gh_token` secret. Until that secret is added,
+          # skip instead of hard-failing every run.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::GH_TOKEN (secrets.gh_token) is not set — skipping branch protection audit. Add a repo-admin PAT as the 'gh_token' secret to enable this check."
+            exit 0
+          fi
+
+          echo "==> Fetching branch protection rules for main..."
+          RULES=$(gh api "repos/${{ github.repository }}/branches/main/protection" 2>&1) || {
+            echo "::error::Failed to fetch branch protection rules: $RULES"
+            exit 1
+          }
+
+          checks_passed=0
+          checks_total=0
+
+          check() {
+            local field="$1" expected="$2"
+            checks_total=$((checks_total + 1))
+            actual=$(echo "$RULES" | jq -r "$field")
+            if [ "$actual" = "$expected" ]; then
+              echo "  ✓ $field = $actual"
+              checks_passed=$((checks_passed + 1))
+            else
+              echo "::error::$field mismatch: expected $expected, got $actual"
+            fi
+          }
+
+          # Verify each protection rule
+          check '.required_pull_request_reviews.dismiss_stale_reviews' 'true'
+          check '.required_pull_request_reviews.require_code_owner_reviews' 'false'
+          check '.required_pull_request_reviews.required_approving_review_count' '1'
+          check '.enforce_admins.enabled' 'true'
+          check '.required_conversation_resolution.enabled' 'true'
+          check '.allow_force_pushes.enabled' 'false'
+          check '.allow_deletions.enabled' 'false'
+          check '.required_status_checks' 'null'
+
+          echo "==> Result: $checks_passed / $checks_total checks passed"
+
+          if [ "$checks_passed" -ne "$checks_total" ]; then
+            echo "::error::Branch protection has drifted from expected configuration!"
+            exit 1
+          fi
+
+          echo "::notice::All branch protection rules verified and matching expected configuration."
