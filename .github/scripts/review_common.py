@@ -43,6 +43,12 @@ EMPTY_REVIEW_MARKER = "**REVIEW SKIPPED - EMPTY PROVIDER RESPONSE**"
 # blocking "REQUEST CHANGES" verdict — a missing secret is a repo-config issue,
 # not a code-review finding.
 API_KEY_MISSING_MARKER = "**REVIEW SKIPPED - API KEY NOT CONFIGURED**"
+# Sentinel embedded in the review body when the provider returns 401/403
+# (invalid or unauthorized API key). extract_verdict.py looks for this marker
+# so the workflow treats it as a skipped check (exit 2 / soft-fail) rather than
+# a blocking "REQUEST CHANGES" verdict — a bad key is a repo-config issue,
+# not a code-review finding.
+API_KEY_INVALID_MARKER = "**REVIEW SKIPPED - API KEY REJECTED**"
 TRUNCATION_NOTICE_TEMPLATE = (
     "\n\n[diff truncated after {kept_files} file(s); skipped {skipped_files} additional file(s) "
     "to stay within the 120k-character review budget while preserving whole-file diff blocks]"
@@ -191,10 +197,20 @@ def emit_empty_diff_notice(provider_name: str) -> int:
 class ProviderOutageError(RuntimeError):
     """Raised when a retryable HTTP/network error exhausts all retry attempts.
 
-    Kept distinct from the `SystemExit(1)` raised for non-retryable errors
-    (bad model name, auth failures, malformed JSON) so callers can treat a
-    genuine transient outage as a soft-fail advisory instead of a hard
-    workflow failure, while config/auth bugs still fail loudly.
+    Kept distinct from `SystemExit(1)` raised for non-retryable non-auth errors
+    (bad model name, malformed JSON) so callers can treat a genuine transient
+    outage as a soft-fail advisory instead of a hard workflow failure.
+    """
+
+
+class ProviderAuthError(RuntimeError):
+    """Raised when the provider returns 401 or 403 — a bad, expired, or
+    unauthorized API key.
+
+    Distinct from `ProviderOutageError` (transient) and `SystemExit(1)` (hard
+    config bug).  Callers should emit an "invalid key" skip notice so the
+    workflow soft-fails rather than blocking the merge gate over a secret that
+    needs a human to fix.
     """
 
 
@@ -231,6 +247,26 @@ def emit_missing_key_notice(provider_name: str, key_env: str) -> int:
         f"Once the secret is configured, re-run this workflow or push a new commit "
         f"to trigger a fresh review.\n\n"
         f"{API_KEY_MISSING_MARKER}"
+    )
+    return 0
+
+
+def emit_invalid_key_notice(provider_name: str, detail: str) -> int:
+    """Print a notice that the API key was rejected (401/403) and return success.
+
+    Unlike a missing key (no secret configured at all), this means a secret
+    exists but is wrong, expired, or lacks permissions.  The message includes
+    the HTTP status and body so the admin can diagnose without reading logs.
+    """
+    print(
+        f"## {provider_name} AI Code Review — Skipped: API key rejected\n\n"
+        f"The {provider_name} API rejected the configured key: {detail}\n\n"
+        f"**To fix this**:\n"
+        f"1. Verify the API key is valid and not expired.\n"
+        f"2. Go to **Settings → Secrets and variables → Actions** in this repo.\n"
+        f"3. Update the `{provider_name.upper()}_API_KEY` secret with a valid key.\n"
+        f"4. Re-run this workflow or push a new commit to retry.\n\n"
+        f"{API_KEY_INVALID_MARKER}"
     )
     return 0
 
@@ -486,6 +522,10 @@ def fetch_review(
             # Keep the provider response in stderr so maintainers can distinguish auth, quota, and API failures.
             body = exc.read().decode()
             logger.error(f"ERROR: {provider_label} API returned {exc.code}: {body}")
+            if exc.code in (401, 403):
+                raise ProviderAuthError(
+                    f"{provider_label} API returned {exc.code}: {body}"
+                ) from exc
             if exc.code not in RETRYABLE_HTTP_STATUSES:
                 raise SystemExit(1) from exc
             if attempt == MAX_FETCH_ATTEMPTS:

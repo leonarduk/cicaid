@@ -17,9 +17,11 @@ import sys
 from typing import Any
 
 from review_common import (
+    ProviderAuthError,
     ProviderOutageError,
     build_prompt,
     emit_empty_diff_notice,
+    emit_invalid_key_notice,
     emit_missing_key_notice,
     emit_outage_notice,
     fetch_review,
@@ -140,6 +142,8 @@ def main() -> int:
     prompt = build_prompt(context.pr_title, context.diff, context.issue_body, context.discussion, context.verified_facts)
     try:
         review = fetch_deepseek_review(context.api_key, prompt)
+    except ProviderAuthError as exc:
+        return emit_invalid_key_notice("DeepSeek", str(exc))
     except ProviderOutageError as exc:
         return emit_outage_notice("DeepSeek", str(exc))
     return finalize_review(review, "DeepSeek")

@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-from review_common import API_KEY_MISSING_MARKER, EMPTY_REVIEW_MARKER, PROVIDER_OUTAGE_MARKER
+from review_common import API_KEY_INVALID_MARKER, API_KEY_MISSING_MARKER, EMPTY_REVIEW_MARKER, PROVIDER_OUTAGE_MARKER
 
 # Primary format: bold verdict, optionally with backticks inside the bold markers, e.g.
 # `**APPROVE**` or `` **`APPROVE`** ``. Matched anywhere in the text (first occurrence wins),
@@ -88,6 +88,10 @@ def main(review_file: str, provider_name: str) -> int:
 
     if API_KEY_MISSING_MARKER in review_text:
         print(f"⚠ {provider_name} review skipped: API key not configured (see log for details)")
+        return 2
+
+    if API_KEY_INVALID_MARKER in review_text:
+        print(f"⚠ {provider_name} review skipped: API key rejected (see log for details)")
         return 2
 
     verdict = extract_verdict(review_text)
