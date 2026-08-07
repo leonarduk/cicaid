@@ -23,8 +23,16 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-#      - name: Update README to this release's version
-#        run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+
+      - name: Update README to this release's version
+        run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
 
       - name: Push README update to main
         run: |
@@ -36,6 +44,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add README.md
           git commit -m "Update README install commands to ${{ github.ref_name }}"
-          # HEAD is the tagged commit (detached); fast-forward main to it plus
-          # this commit, since the tag is always cut from main's current tip.
           git push origin HEAD:main
