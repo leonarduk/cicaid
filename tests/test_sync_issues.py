@@ -1,4 +1,4 @@
-from cicaid_devtools.a_sync_issues import format_issue_file, make_filename, slugify
+from cicaid_devtools.sync_issues import format_issue_file, make_filename, slugify
 
 
 def test_slugify_lowercases_and_hyphenates():

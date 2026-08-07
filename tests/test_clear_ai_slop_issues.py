@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from cicaid_devtools.q_clear_ai_slop_issues import (
+from cicaid_devtools.clear_ai_slop_issues import (
     CloseCandidate,
     GhIssue,
     _closing_comment,
@@ -160,7 +160,7 @@ def test_deduplicate_candidates_keeps_first_occurrence():
 def test_closing_comment_mentions_script_name():
     candidate = CloseCandidate(issue=issue(1, "x"), reason="duplicate", evidence="Duplicate of #2")
     comment = _closing_comment(candidate)
-    assert "q_clear_ai_slop_issues.py" in comment
+    assert "clear_ai_slop_issues.py" in comment
     assert "Duplicate of #2" in comment
 
 

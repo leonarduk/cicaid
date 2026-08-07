@@ -13,31 +13,31 @@ import sys
 # (module, one-line description) -- kept in the same order as the README's command
 # table so `cicaid --help` and the docs read the same way.
 COMMANDS: dict[str, tuple[str, str]] = {
-    "sync-issues": ("cicaid_devtools.a_sync_issues", "Sync GitHub issues to local markdown files"),
-    "triage-issues": ("cicaid_devtools.c_triage_issues", "Triage unmilestoned open issues"),
+    "sync-issues": ("cicaid_devtools.sync_issues", "Sync GitHub issues to local markdown files"),
+    "triage-issues": ("cicaid_devtools.triage_issues", "Triage unmilestoned open issues"),
     "clear-ai-slop-issues": (
-        "cicaid_devtools.q_clear_ai_slop_issues",
+        "cicaid_devtools.clear_ai_slop_issues",
         "Detect and close duplicate/stale/AI-slop issues",
     ),
-    "review-issue": ("cicaid_devtools.o_review_issue", "Refresh a stale issue with an LLM"),
-    "create-issue": ("cicaid_devtools.b_create_issue", "Draft and create a new GitHub issue"),
-    "work-on-issue": ("cicaid_devtools.d_work_on_issue", "Check out a branch for an issue"),
+    "review-issue": ("cicaid_devtools.review_issue", "Refresh a stale issue with an LLM"),
+    "create-issue": ("cicaid_devtools.create_issue", "Draft and create a new GitHub issue"),
+    "work-on-issue": ("cicaid_devtools.work_on_issue", "Check out a branch for an issue"),
     "implement-issue-with-aider": (
-        "cicaid_devtools.f_implement_issue_with_aider",
+        "cicaid_devtools.implement_issue_with_aider",
         "Extract an issue prompt for Aider",
     ),
-    "work-on-pr": ("cicaid_devtools.e_work_on_pr", "Check out the branch for an open PR"),
-    "run-ci-checks": ("cicaid_devtools.h_run_ci_checks", "Run the local CI check suite"),
-    "local-review": ("cicaid_devtools.i_local_review", "LLM-review uncommitted local changes"),
+    "work-on-pr": ("cicaid_devtools.work_on_pr", "Check out the branch for an open PR"),
+    "run-ci-checks": ("cicaid_devtools.run_ci_checks", "Run the local CI check suite"),
+    "local-review": ("cicaid_devtools.local_review", "LLM-review uncommitted local changes"),
     "commit-and-push": (
         "cicaid_devtools.lib.commit_and_push",
         "Commit with an LLM-drafted message and push",
     ),
     "publish-pr": ("cicaid_devtools.lib.publish_pr", "Publish a PR from the current branch"),
-    "pr-review": ("cicaid_devtools.l_pr_review", "LLM-review an open PR"),
-    "add-issue-to-pr": ("cicaid_devtools.p_add_issue_to_pr", "Link an issue to its PR"),
+    "pr-review": ("cicaid_devtools.pr_review", "LLM-review an open PR"),
+    "add-issue-to-pr": ("cicaid_devtools.add_issue_to_pr", "Link an issue to its PR"),
     "dependabot-auto-merge": (
-        "cicaid_devtools.m_dependabot_auto_merge",
+        "cicaid_devtools.dependabot_auto_merge",
         "Auto-merge green Dependabot PRs",
     ),
 }

@@ -1,4 +1,4 @@
-from cicaid_devtools.o_review_issue import (
+from cicaid_devtools.review_issue import (
     FALLBACK_TEMPLATE_SECTIONS,
     apply_known_file_paths,
     files_affected_is_unresolved,

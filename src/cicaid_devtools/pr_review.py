@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Add the local lib/ dir (for llm_common, review_common) to sys.path so this
 # works both as an importable module and when invoked directly (e.g.
-# `python l_pr_review.py`), where the package root is not on sys.path.
+# `python pr_review.py`), where the package root is not on sys.path.
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from llm_common import (
     add_model_source_arg,

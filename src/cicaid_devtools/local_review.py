@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 # Add this script's own dir (for the sibling d_work_on_issue module) and the
 # local lib/ dir (for llm_common, review_common, publish_pr, github_repo) to
 # sys.path so this works both as an importable module and when invoked
-# directly (e.g. `python i_local_review.py`), where the package root is not
+# directly (e.g. `python local_review.py`), where the package root is not
 # on sys.path.
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
@@ -41,7 +41,7 @@ from review_common import (  # noqa: E402
 )
 from publish_pr import extract_issue_id, get_current_branch  # noqa: E402
 
-from d_work_on_issue import fetch_issue  # noqa: E402
+from work_on_issue import fetch_issue  # noqa: E402
 from github_repo import get_repo_info  # noqa: E402
 
 def get_git_root() -> str:
