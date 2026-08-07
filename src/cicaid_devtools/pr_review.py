@@ -37,7 +37,7 @@ from review_common import (
 )
 
 
-from github_repo import get_repo_info  # shared implementation
+from cicaid_devtools.lib.github_repo import get_repo_info  # shared implementation
 
 
 def fetch_pr_details(owner: str, repo: str, pr_id: int) -> dict:

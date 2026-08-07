@@ -14,7 +14,7 @@ def get_repo_info() -> tuple[str, str]:
 
     If the current checkout is a ``.wiki`` repository (e.g.
     ``leonarduk/cicaid.wiki``), the returned name is the corresponding
-    non-wiki repository (e.g. ``cidaid``), because wiki repos don't have
+    non-wiki repository (e.g. ``cicaid``), because wiki repos don't have
     their own issues or pull-requests.
     """
     try:

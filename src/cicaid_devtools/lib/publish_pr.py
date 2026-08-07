@@ -18,8 +18,7 @@ from typing import Optional
 import requests
 
 
-sys.path.insert(0, str(Path(__file__).parent))  # make sibling modules importable
-from github_repo import get_repo_info  # shared implementation
+from cicaid_devtools.lib.github_repo import get_repo_info  # shared implementation
 
 
 def get_current_branch() -> str:
