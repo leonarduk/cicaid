@@ -39,7 +39,7 @@ def get_required_env(name: str) -> str:
     """Return a required environment variable or raise SystemExit with a clear error."""
     value = os.environ.get(name, "")
     if not value:
-        print(f"ERROR: {name} not set", file=sys.stderr)
+        print("ERROR: required secret is not set", file=sys.stderr)
         raise SystemExit(1)
     return value
 
