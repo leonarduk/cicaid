@@ -51,6 +51,73 @@ def fetch_issue(owner: str, repo: str, issue_id: int, token: str | None = None) 
     return resp.json()
 
 
+def get_main_branch_sha(owner: str, repo: str) -> str:
+    """Get the SHA of the main/master branch."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "origin/main"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        result = subprocess.run(
+            ["git", "rev-parse", "origin/master"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as exc:
+        logger.error("Failed to get main branch SHA: %s", exc)
+        sys.exit(1)
+
+
+def create_branch(owner: str, repo: str, branch_name: str, sha: str, token: str | None = None) -> None:
+    """Create a branch in the remote repo.
+
+    First checks whether the branch ref already exists via a GET request.
+    Only POSTs to create if the ref is absent (404).
+    """
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    # Check if the branch already exists
+    ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{branch_name}"
+    try:
+        resp = requests.get(ref_url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            logger.info("Branch %s already exists, skipping creation.", branch_name)
+            return
+        if resp.status_code != 404:
+            logger.warning(
+                "Unexpected status %d checking branch ref, will attempt creation.",
+                resp.status_code,
+            )
+    except requests.RequestException as exc:
+        logger.warning("Could not check for existing branch (%s); will attempt creation.", exc)
+
+    # Branch does not exist; create it
+    url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
+    data = {"ref": f"refs/heads/{branch_name}", "sha": sha}
+    try:
+        resp = requests.post(url, json=data, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        if resp.status_code == 422 and "Reference already exists" in resp.text:
+            logger.warning("Branch %s already exists (will proceed with checkout)", branch_name)
+        else:
+            logger.exception("Failed to create branch: %s", exc)
+            sys.exit(1)
+    except requests.RequestException as exc:
+        logger.exception("Failed to create branch: %s", exc)
+        sys.exit(1)
+
+
 def main() -> None:
     """Create and check out a remote branch for the requested issue."""
     parser = argparse.ArgumentParser(description="Create a GitHub issue checkout branch")
