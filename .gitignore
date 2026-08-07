@@ -5,6 +5,7 @@ build/
 dist/
 .venv/
 venv/
+.idea/
 .pytest_cache/
 .ruff_cache/
 .coverage
