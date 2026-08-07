@@ -40,21 +40,31 @@ jobs:
           git add README.md
           git commit -m "Update README install commands to ${{ github.ref_name }}"
 
-          # Push to a temp branch and merge via PR (works with branch protection)
+          # Strategy 1: PR-based merge (works with branch protection if
+          # repo settings allow Actions to create PRs).
           BRANCH="readme-bump-${GITHUB_REF_NAME#v}"
           git checkout -b "$BRANCH"
           git push --force origin "$BRANCH"
 
-          PR_URL=$(gh pr create \
+          if PR_URL=$(gh pr create \
             --base main \
             --head "$BRANCH" \
             --title "Update README install commands to ${{ github.ref_name }}" \
-            --body "Automated version bump triggered by release ${{ github.ref_name }}.")
-          echo "Created $PR_URL"
-
-          if ! gh pr merge "$PR_URL" --merge; then
-            echo "::warning::Could not auto-merge the README PR."
-            echo "::warning::See $PR_URL — merge it manually to update the README."
+            --body "Automated version bump triggered by release ${{ github.ref_name }}." 2>/dev/null); then
+            echo "Created $PR_URL"
+            gh pr merge "$PR_URL" --merge || \
+              echo "::warning::Could not auto-merge $PR_URL — merge it manually."
+          else
+            # Strategy 2: direct push (fallback when Actions cannot create PRs).
+            echo "::notice::PR creation blocked by repo settings; trying direct push."
+            if git push origin HEAD:main 2>&1; then
+              echo "Pushed README update to main."
+            else
+              echo "::warning::Could not update the README on main."
+              echo "::warning::To fix: enable 'Allow GitHub Actions to create"
+              echo "::warning::pull requests' in repo Settings → Actions → General,"
+              echo "::warning::or manually run: scripts/bump_readme_version.py"
+            fi
           fi
 
       - name: Create GitHub Release
