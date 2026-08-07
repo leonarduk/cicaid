@@ -17,7 +17,7 @@ jobs:
 
       - name: Download actionlint
         run: |
-          curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- -o /usr/local/bin
+          curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest /usr/local/bin
         shell: bash
 
       - name: Lint workflow files
