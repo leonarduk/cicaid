@@ -71,6 +71,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/* \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
+          if gh release view "${{ github.ref_name }}" &>/dev/null; then
+            echo "Release already exists; uploading artifacts."
+            gh release upload "${{ github.ref_name }}" dist/*
+          else
+            gh release create "${{ github.ref_name }}" dist/* \
+              --title "${{ github.ref_name }}" \
+              --generate-notes
+          fi
