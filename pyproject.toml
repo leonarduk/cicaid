@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cicaid-devtools"
-version = "0.2.0"
+version = "0.3.0"
 description = "Shared issue/PR/review automation scripts (the developer_tools pipeline) for leonarduk repos"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,6 +21,7 @@ test = [
 ]
 
 [project.scripts]
+cicaid = "cicaid_devtools.cli:main"
 sync-issues = "cicaid_devtools.a_sync_issues:main"
 create-issue = "cicaid_devtools.b_create_issue:main"
 triage-issues = "cicaid_devtools.c_triage_issues:main"

@@ -13,20 +13,27 @@ truth, installed as a dependency by every consuming repo instead of vendored in-
 ## Install
 
 Each push of a `vX.Y.Z` tag builds a wheel and attaches it to a
-[GitHub Release](https://github.com/leonarduk/cicaid/releases). Install a specific
-release directly from its asset URL — pin the version explicitly for reproducible
-installs, the same as any other pinned dependency:
+[GitHub Release](https://github.com/leonarduk/cicaid/releases), and updates the
+command below to that version as part of the same release — this always shows the
+latest release, no manual edits. Pinning to a specific version this way (rather
+than a floating `@main` install) is what makes the install reproducible:
 
+<!-- cicaid-version:start -->
 ```bash
-pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.1.0/cicaid_devtools-0.1.0-py3-none-any.whl"
+pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.3.0/cicaid_devtools-0.3.0-py3-none-any.whl"
 ```
+<!-- cicaid-version:end -->
 
-Check the [Releases page](https://github.com/leonarduk/cicaid/releases) for the
-latest version and its exact asset URL. Optional extras work the same way:
+Optional extras work the same way:
 
+<!-- cicaid-version-dotenv:start -->
 ```bash
-pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/releases/download/v0.1.0/cicaid_devtools-0.1.0-py3-none-any.whl"
+pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/releases/download/v0.3.0/cicaid_devtools-0.3.0-py3-none-any.whl"
 ```
+<!-- cicaid-version-dotenv:end -->
+
+Want an older release instead? See the [Releases page](https://github.com/leonarduk/cicaid/releases)
+for every version's asset URL.
 
 For tracking an unreleased commit (e.g. testing a fix before it's tagged), install
 straight from git instead:
@@ -40,9 +47,21 @@ pip install "cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@<ref>
 
 ## Usage
 
-Every command below auto-detects the owner/repo it's operating on from the `origin`
-git remote of the directory you run it from — run them from inside whichever repo
-you want to act on (`allotmint`, `allotmint-mcp`, `ai-systems-lab`, ...), not from
+There's one command to remember:
+
+```bash
+cicaid --help
+```
+
+That lists every subcommand with a one-line description (`cicaid sync-issues`,
+`cicaid work-on-issue 123`, `cicaid run-ci-checks --list`, ...). Each subcommand
+also installs as its own flat command for anything already scripted against a
+specific name — `cicaid work-on-issue 123` and `work-on-issue 123` are identical,
+so nothing that already calls the flat names breaks.
+
+Every command auto-detects the owner/repo it's operating on from the `origin` git
+remote of the directory you run it from — run them from inside whichever repo you
+want to act on (`allotmint`, `allotmint-mcp`, `ai-systems-lab`, ...), not from
 inside `cicaid` itself.
 
 | Command | Replaces (old in-repo path) | What it does |
@@ -114,12 +133,13 @@ pytest
 Bump `version` in `pyproject.toml`, then push a matching tag:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-The [release workflow](.github/workflows/release.yml) builds the sdist/wheel and
-publishes them as assets on a new GitHub Release automatically.
+The [release workflow](.github/workflows/release.yml) builds the sdist/wheel,
+publishes them as assets on a new GitHub Release, and pushes a commit updating
+this README's install commands to the new version — all automatically.
 
 ## Related issues
 

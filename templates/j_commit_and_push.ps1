@@ -9,7 +9,7 @@ param(
     [alias("no-llm")]
     [switch]$NoLlm = $false,
     [string]$Model = $null,
-    [ValidateSet('local', 'cloud')]
+    [ValidateSet('local', 'cloud', 'remote')]
     [string]$ModelSource = $null,
     [switch]$NoPush = $false
 )
@@ -41,6 +41,7 @@ Specify the source of the model being committed and pushed.
 Possible values:
 - local: Use a local LLM model.
 - cloud: Use a cloud-based LLM model.
+- remote: Use a self-hosted OpenAI-compatible model.
 
 .PARAMETER NoPush
 Commit only; skip pushing the branch to origin.
@@ -56,7 +57,8 @@ Commit only; skip pushing the branch to origin.
 
 .NOTES
 Ensure you're in the target repo (any subdirectory) when running this script, and that
-the cicaid-devtools package is installed (pip install "cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git").
+the cicaid-devtools package is installed -- see the Install section of
+https://github.com/leonarduk/cicaid#readme for the current release wheel URL.
 #>
 
 # Ensure we're in a git repo (commit-and-push resolves owner/repo dynamically from here)
