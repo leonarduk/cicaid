@@ -30,6 +30,7 @@ _review_common_spec = importlib.util.spec_from_file_location(
     "review_common", _review_common_path
 )
 review_common = importlib.util.module_from_spec(_review_common_spec)
+sys.modules["review_common"] = review_common
 _review_common_spec.loader.exec_module(review_common)
 
 
@@ -264,20 +265,85 @@ class TestRedactEnvVarNames:
         assert exc_info.value.args[0] == 401
         assert exc_info.value.args[1] == "Unauthorized"
 
-    def test_provider_outage_error_multiple_string_args_redacts_only_first(self):
-        """Only the first string arg is redacted; subsequent args pass through."""
+    def test_provider_outage_error_redacts_all_string_args(self):
+        """ALL string args are redacted, not just the first."""
         with pytest.raises(review_common.ProviderOutageError) as exc_info:
             raise review_common.ProviderOutageError(
-                "Bad GITHUB_TOKEN", "Keep this", "DEEPSEEK_API_KEY ignored"
+                "Bad GITHUB_TOKEN", "Also DEEPSEEK_API_KEY"
             )
         msg = str(exc_info.value)
         assert "GITHUB_TOKEN" not in msg
+        assert "DEEPSEEK_API_KEY" not in msg
         assert "[REDACTED_ENV_VAR]" in msg
-        assert exc_info.value.args[1] == "Keep this"
-        assert exc_info.value.args[2] == "DEEPSEEK_API_KEY ignored"
+        # Both args redacted
+        assert "GITHUB_TOKEN" not in exc_info.value.args[0]
+        assert "DEEPSEEK_API_KEY" not in exc_info.value.args[1]
 
     def test_provider_auth_error_no_args_uses_default(self):
         """Exception with no args should still construct (RuntimeError behavior)."""
         with pytest.raises(review_common.ProviderAuthError) as exc_info:
             raise review_common.ProviderAuthError()
         assert str(exc_info.value) == ""
+
+    # ------------------------------------------------------------------
+    # Regex edge case: digit-containing env var names (MY_SECRET_1)
+    # ------------------------------------------------------------------
+
+    def test_redacts_digit_in_trailing_segment(self):
+        """MY_SECRET_1 must be redacted even with trailing digit."""
+        result = review_common.redact_env_var_names(
+            "ERROR: MY_SECRET_1 not set"
+        )
+        assert "MY_SECRET_1" not in result
+        assert "[REDACTED_ENV_VAR]" in result
+
+    def test_redacts_digit_in_middle_segment(self):
+        """MY_1_SECRET must be redacted even with digit in middle segment."""
+        result = review_common.redact_env_var_names(
+            "ERROR: MY_1_SECRET not set"
+        )
+        assert "MY_1_SECRET" not in result
+        assert "[REDACTED_ENV_VAR]" in result
+
+    def test_redacts_digit_only_segment(self):
+        """MY_123_SECRET must be redacted even with all-digit segment."""
+        result = review_common.redact_env_var_names(
+            "ERROR: MY_123_SECRET not set"
+        )
+        assert "MY_123_SECRET" not in result
+        assert "[REDACTED_ENV_VAR]" in result
+
+    # ------------------------------------------------------------------
+    # Exception chaining: __cause__ must not leak env var names
+    # ------------------------------------------------------------------
+
+    def test_provider_auth_error_chaining_suppresses_cause(self):
+        """When raised with 'from None', __cause__ is None."""
+        try:
+            try:
+                raise ValueError("Bad GITHUB_TOKEN")
+            except ValueError:
+                raise review_common.ProviderAuthError("Auth failed") from None
+        except review_common.ProviderAuthError as exc:
+            assert exc.__cause__ is None
+
+    def test_provider_outage_error_chaining_suppresses_cause(self):
+        """When raised with 'from None', __cause__ is None."""
+        try:
+            try:
+                raise ConnectionError("Timed out for OPENAI_API_KEY")
+            except ConnectionError:
+                raise review_common.ProviderOutageError("Outage") from None
+        except review_common.ProviderOutageError as exc:
+            assert exc.__cause__ is None
+
+    # ------------------------------------------------------------------
+    # emit_missing_key_notice: must NOT redact (admin needs the key name)
+    # ------------------------------------------------------------------
+
+    def test_emit_missing_key_notice_preserves_key_name(self, capsys):
+        """The key name is preserved so the admin knows what to configure."""
+        review_common.emit_missing_key_notice("DeepSeek", "DEEPSEEK_API_KEY")
+        out = capsys.readouterr().out
+        assert "DEEPSEEK_API_KEY" in out
+        assert "[REDACTED_ENV_VAR]" not in out

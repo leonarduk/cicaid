@@ -65,9 +65,9 @@ TRUNCATION_NOTICE_TEMPLATE = (
 # configure; ``emit_invalid_key_notice`` DOES redact its ``detail`` argument
 # because it contains an API error body that may leak env var names.
 _ENV_VAR_NAME_RE = re.compile(
-    r'\b[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)*'
+    r'\b[A-Z][A-Z0-9]*(?:_[A-Z0-9][A-Z0-9]*)*'
     r'_(?:TOKEN|KEY|SECRET|PASS(?:WORD)?|AUTH|CREDENTIAL|API)'
-    r'(?:_[A-Z][A-Z0-9]*)*\b'
+    r'(?:_[A-Z0-9][A-Z0-9]*)*\b'
 )
 _REDACTED_PLACEHOLDER = "[REDACTED_ENV_VAR]"
 
@@ -244,10 +244,12 @@ class ProviderOutageError(RuntimeError):
     """
 
     def __init__(self, *args):
-        # Redact env var names before calling the parent RuntimeError
-        # constructor so the message is safe regardless of who catches this.
-        if args and isinstance(args[0], str):
-            args = (redact_env_var_names(args[0]),) + args[1:]
+        # Redact env var names in every string arg before calling the
+        # parent RuntimeError constructor so the message is safe
+        # regardless of who catches this.
+        args = tuple(
+            redact_env_var_names(a) if isinstance(a, str) else a for a in args
+        )
         super().__init__(*args)
 
 
@@ -266,10 +268,12 @@ class ProviderAuthError(RuntimeError):
     """
 
     def __init__(self, *args):
-        # Redact env var names before calling the parent RuntimeError
-        # constructor so the message is safe regardless of who catches this.
-        if args and isinstance(args[0], str):
-            args = (redact_env_var_names(args[0]),) + args[1:]
+        # Redact env var names in every string arg before calling the
+        # parent RuntimeError constructor so the message is safe
+        # regardless of who catches this.
+        args = tuple(
+            redact_env_var_names(a) if isinstance(a, str) else a for a in args
+        )
         super().__init__(*args)
 
 
@@ -584,25 +588,29 @@ def fetch_review(
             # Redact any env var names that might appear in the error body or URL.
             body = exc.read().decode()
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned {exc.code}: {body}"))
+            # Use `from None` instead of `from exc` to prevent the original
+            # HTTPError's message (which may contain env var names) from
+            # leaking through __cause__.  The full (redacted) diagnostic is
+            # already captured by logger.error above.
             if exc.code in (401, 403):
                 raise ProviderAuthError(
                     f"{provider_label} API returned {exc.code}: {body}"
-                ) from exc
+                ) from None
             if exc.code not in RETRYABLE_HTTP_STATUSES:
-                raise SystemExit(1) from exc
+                raise SystemExit(1) from None
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
                     f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
-                ) from exc
+                ) from None
         except urllib.error.URLError as exc:
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API request failed: {exc.reason}"))
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
                     f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
-                ) from exc
+                ) from None
         except json.JSONDecodeError as exc:
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned non-JSON response: {exc}"))
-            raise SystemExit(1) from exc
+            raise SystemExit(1) from None
 
         delay = RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
         logger.info(
