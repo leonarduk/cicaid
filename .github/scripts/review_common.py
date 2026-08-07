@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import logging
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,22 @@ TRUNCATION_NOTICE_TEMPLATE = (
     "to stay within the 120k-character review budget while preserving whole-file diff blocks]"
 )
 
+# Pattern matching environment variable names that contain known secret-name
+# suffixes (`_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`, `_PASS`, `_AUTH`,
+# `_CREDENTIAL`, `_API`).  Requires at least one underscore and all-caps
+# characters so legitimate config keys (e.g. `MAX_RETRIES`, `PR_TITLE`)
+# are not redacted.  Applied to stderr log messages and to stdout messages
+# that echo provider error details.  ``emit_missing_key_notice`` intentionally
+# does NOT redact the key name so the repo admin knows which secret to
+# configure; ``emit_invalid_key_notice`` DOES redact its ``detail`` argument
+# because it contains an API error body that may leak env var names.
+_ENV_VAR_NAME_RE = re.compile(
+    r'\b[A-Z][A-Z0-9]*(?:_[A-Z0-9][A-Z0-9]*)*'
+    r'_(?:TOKEN|KEY|SECRET|PASS(?:WORD)?|AUTH|CREDENTIAL|API)'
+    r'(?:_[A-Z0-9][A-Z0-9]*)*\b'
+)
+_REDACTED_PLACEHOLDER = "[REDACTED_ENV_VAR]"
+
 
 @dataclass(frozen=True)
 class ReviewContext:
@@ -67,11 +84,31 @@ class ReviewContext:
     verified_facts: str = ""
 
 
+def redact_env_var_names(message: str) -> str:
+    """Replace environment variable names with a placeholder in error/log messages.
+
+    Matches ALL_CAPS identifiers that contain known secret-name suffixes
+    (e.g. ``DEEPSEEK_API_KEY``, ``GITHUB_TOKEN``) and replaces each match
+    with ``[REDACTED_ENV_VAR]``.  Legitimate non-secret config keys (e.g.
+    ``MAX_RETRIES``, ``PR_TITLE``) are left unchanged.
+
+    Callers that emit messages to stderr (logs, error output) should route
+    through this function.  User-facing stdout messages (e.g. the
+    ``emit_missing_key_notice`` body that tells an admin which secret to
+    configure) are intentionally left unredacted.
+    """
+    return _ENV_VAR_NAME_RE.sub(_REDACTED_PLACEHOLDER, message)
+
+
 def get_required_env(name: str) -> str:
-    """Return a required environment variable or raise SystemExit with a clear error."""
+    """Return a required environment variable or raise SystemExit with a clear error.
+
+    The env var name is redacted in stderr so that security scanners and log
+    consumers do not see which secret is missing.
+    """
     value = os.environ.get(name, "")
     if not value:
-        logger.error(f"ERROR: {name} not set")
+        logger.error(redact_env_var_names(f"ERROR: {name} not set"))
         raise SystemExit(1)
     return value
 
@@ -200,7 +237,20 @@ class ProviderOutageError(RuntimeError):
     Kept distinct from `SystemExit(1)` raised for non-retryable non-auth errors
     (bad model name, malformed JSON) so callers can treat a genuine transient
     outage as a soft-fail advisory instead of a hard workflow failure.
+
+    The message is automatically redacted on construction so that callers who
+    catch and log this exception never leak env var names through exception
+    propagation paths.
     """
+
+    def __init__(self, *args):
+        # Redact env var names in every string arg before calling the
+        # parent RuntimeError constructor so the message is safe
+        # regardless of who catches this.
+        args = tuple(
+            redact_env_var_names(a) if isinstance(a, str) else a for a in args
+        )
+        super().__init__(*args)
 
 
 class ProviderAuthError(RuntimeError):
@@ -211,7 +261,20 @@ class ProviderAuthError(RuntimeError):
     config bug).  Callers should emit an "invalid key" skip notice so the
     workflow soft-fails rather than blocking the merge gate over a secret that
     needs a human to fix.
+
+    The message is automatically redacted on construction so that callers who
+    catch and log this exception never leak env var names through exception
+    propagation paths.
     """
+
+    def __init__(self, *args):
+        # Redact env var names in every string arg before calling the
+        # parent RuntimeError constructor so the message is safe
+        # regardless of who catches this.
+        args = tuple(
+            redact_env_var_names(a) if isinstance(a, str) else a for a in args
+        )
+        super().__init__(*args)
 
 
 def emit_outage_notice(provider_name: str, detail: str) -> int:
@@ -255,12 +318,14 @@ def emit_invalid_key_notice(provider_name: str, detail: str) -> int:
     """Print a notice that the API key was rejected (401/403) and return success.
 
     Unlike a missing key (no secret configured at all), this means a secret
-    exists but is wrong, expired, or lacks permissions.  The message includes
-    the HTTP status and body so the admin can diagnose without reading logs.
+    exists but is wrong, expired, or lacks permissions.  The ``detail`` string
+    (typically the exception message from the provider) is redacted so env var
+    names are replaced but status-code and other diagnostic hints are kept.
     """
+    safe_detail = redact_env_var_names(detail)
     print(
         f"**Skipped: API key rejected**\n\n"
-        f"The {provider_name} API rejected the configured key: {detail}\n\n"
+        f"The {provider_name} API rejected the configured key: {safe_detail}\n\n"
         f"**To fix this**:\n"
         f"1. Verify the API key is valid and not expired.\n"
         f"2. Go to **Settings > Secrets and variables > Actions** in this repo.\n"
@@ -520,27 +585,32 @@ def fetch_review(
             break
         except urllib.error.HTTPError as exc:
             # Keep the provider response in stderr so maintainers can distinguish auth, quota, and API failures.
+            # Redact any env var names that might appear in the error body or URL.
             body = exc.read().decode()
-            logger.error(f"ERROR: {provider_label} API returned {exc.code}: {body}")
+            logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned {exc.code}: {body}"))
+            # Use `from None` instead of `from exc` to prevent the original
+            # HTTPError's message (which may contain env var names) from
+            # leaking through __cause__.  The full (redacted) diagnostic is
+            # already captured by logger.error above.
             if exc.code in (401, 403):
                 raise ProviderAuthError(
                     f"{provider_label} API returned {exc.code}: {body}"
-                ) from exc
+                ) from None
             if exc.code not in RETRYABLE_HTTP_STATUSES:
-                raise SystemExit(1) from exc
+                raise SystemExit(1) from None
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
                     f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
-                ) from exc
+                ) from None
         except urllib.error.URLError as exc:
-            logger.error(f"ERROR: {provider_label} API request failed: {exc.reason}")
+            logger.error(redact_env_var_names(f"ERROR: {provider_label} API request failed: {exc.reason}"))
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
                     f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
-                ) from exc
+                ) from None
         except json.JSONDecodeError as exc:
-            logger.error(f"ERROR: {provider_label} API returned non-JSON response: {exc}")
-            raise SystemExit(1) from exc
+            logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned non-JSON response: {exc}"))
+            raise SystemExit(1) from None
 
         delay = RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
         logger.info(
