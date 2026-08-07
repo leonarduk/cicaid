@@ -17,9 +17,14 @@ fi
 
 apply() {
   echo "==> Applying branch protection to '$BRANCH'..."
-  gh api -X PUT "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/branches/$BRANCH/protection" \
+  local repo
+  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+  if ! gh api -X PUT "repos/$repo/branches/$BRANCH/protection" \
     --input "$CONFIG_FILE" \
-    --jq '"  enforce_admins: \(.enforce_admins.enabled)"'
+    --jq '"  enforce_admins: \(.enforce_admins.enabled)"'; then
+    echo "ERROR: Failed to apply branch protection to '$repo'. This requires a token with admin rights on the repo (gh CLI must be authenticated with 'repo' scope as an admin)." >&2
+    exit 1
+  fi
   echo "  ✓ Applied successfully"
 }
 
@@ -61,6 +66,8 @@ verify() {
     'allow_force_pushes' 'false'
   check '.allow_deletions.enabled' \
     'allow_deletions' 'false'
+  check '.required_status_checks' \
+    'required_status_checks' 'null'
 
   if [ "$failed" -eq 1 ]; then
     echo "ERROR: Branch protection has drifted from expected state."
