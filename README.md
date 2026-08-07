@@ -1,22 +1,13 @@
 # cicaid
 
-CI/CD with AI in it.
-
-This repo is the shared home for the `developer_tools` issue/PR/review automation
-pipeline that was previously duplicated between
-[`allotmint`](https://github.com/leonarduk/allotmint) and
-[`allotmint-mcp`](https://github.com/leonarduk/allotmint-mcp) (see
-[allotmint-mcp#374](https://github.com/leonarduk/allotmint-mcp/issues/374)). The two
-copies had already drifted from each other; this package is now the single source of
-truth, installed as a dependency by every consuming repo instead of vendored in-tree.
+One CLI for the repo automation every leonarduk project ends up needing: sync
+issues locally, check out a branch for one, get an LLM review of your uncommitted
+diff or an open PR, commit with an AI-drafted message, run a repo's local CI
+checks, clean up stale AI-suggested issues. Install once, run `cicaid --help`,
+and every command auto-detects which repo it's acting on from your `origin`
+remote — no per-repo setup beyond an optional config file for the checks list.
 
 ## Install
-
-Each push of a `vX.Y.Z` tag builds a wheel and attaches it to a
-[GitHub Release](https://github.com/leonarduk/cicaid/releases), and updates the
-command below to that version as part of the same release — this always shows the
-latest release, no manual edits. Pinning to a specific version this way (rather
-than a floating `@main` install) is what makes the install reproducible:
 
 <!-- cicaid-version:start -->
 ```bash
@@ -24,7 +15,13 @@ pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/down
 ```
 <!-- cicaid-version:end -->
 
-Optional extras work the same way:
+This always points at the latest release — the install command above is updated
+automatically as part of every release, so it never goes stale. Want an older
+version instead? See [Releases](https://github.com/leonarduk/cicaid/releases) for
+every version's exact install command.
+
+The `[dotenv]` extra loads `DEEPSEEK_API_KEY` and similar from a repo-root `.env`
+file for local runs (CI should set real env vars instead):
 
 <!-- cicaid-version-dotenv:start -->
 ```bash
@@ -32,76 +29,67 @@ pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/relea
 ```
 <!-- cicaid-version-dotenv:end -->
 
-Want an older release instead? See the [Releases page](https://github.com/leonarduk/cicaid/releases)
-for every version's asset URL.
-
-For tracking an unreleased commit (e.g. testing a fix before it's tagged), install
-straight from git instead:
+For tracking an unreleased commit instead of a tagged version:
 
 ```bash
 pip install "cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@<ref>"
 ```
 
-`dotenv` enables loading `DEEPSEEK_API_KEY` and similar secrets from a repo-root
-`.env` file during local, interactive runs (CI should set real env vars instead).
-
-## Usage
-
-There's one command to remember:
+## Quick start
 
 ```bash
-cicaid --help
+cd your-repo                 # any repo with a github.com origin remote
+cicaid --help                # list every command
+cicaid sync-issues           # pull open issues into ./issues/*.md
+cicaid work-on-issue 123     # branch + checkout for issue #123
+cicaid local-review          # LLM review of your uncommitted changes
+cicaid commit-and-push       # commit with an AI-drafted message, push
+cicaid publish-pr            # open the PR
+cicaid run-ci-checks --list  # this repo's local check suite
 ```
 
-That lists every subcommand with a one-line description (`cicaid sync-issues`,
-`cicaid work-on-issue 123`, `cicaid run-ci-checks --list`, ...). Each subcommand
-also installs as its own flat command for anything already scripted against a
-specific name — `cicaid work-on-issue 123` and `work-on-issue 123` are identical,
-so nothing that already calls the flat names breaks.
+## Commands
 
-Every command auto-detects the owner/repo it's operating on from the `origin` git
-remote of the directory you run it from — run them from inside whichever repo you
-want to act on (`allotmint`, `allotmint-mcp`, `ai-systems-lab`, ...), not from
-inside `cicaid` itself.
+| Command | What it does |
+|---|---|
+| `sync-issues` | Sync GitHub issues to local markdown files |
+| `create-issue` | Draft and create a new GitHub issue |
+| `triage-issues` | Triage unmilestoned open issues |
+| `work-on-issue` | Check out a branch for an issue |
+| `work-on-pr` | Check out the branch for an open PR |
+| `implement-issue-with-aider` | Extract an issue prompt for Aider |
+| `run-ci-checks` | Run the local CI check suite |
+| `local-review` | LLM-review uncommitted local changes |
+| `pr-review` | LLM-review an open PR |
+| `dependabot-auto-merge` | Auto-merge green Dependabot PRs |
+| `review-issue` | Refresh a stale issue with an LLM |
+| `add-issue-to-pr` | Link an issue to its PR |
+| `clear-ai-slop-issues` | Detect and close duplicate/stale/AI-slop issues |
+| `commit-and-push` | Commit with an LLM-drafted message and push |
+| `publish-pr` | Publish a PR from the current branch |
 
-| Command | Replaces (old in-repo path) | What it does |
-|---|---|---|
-| `sync-issues` | `scripts/developer_tools/a_sync_issues.py` | Sync GitHub issues to local markdown files |
-| `create-issue` | `scripts/developer_tools/b_create_issue.py` | Draft and create a new GitHub issue |
-| `triage-issues` | `scripts/developer_tools/c_triage_issues.py` | Triage unmilestoned open issues |
-| `work-on-issue` | `scripts/developer_tools/d_work_on_issue.py` | Check out a branch for an issue |
-| `work-on-pr` | `scripts/developer_tools/e_work_on_pr.py` | Check out the branch for an open PR |
-| `implement-issue-with-aider` | `scripts/developer_tools/f_implement_issue_with_aider.py` | Extract an issue prompt for Aider |
-| `run-ci-checks` | `scripts/developer_tools/h_run_ci_checks.py` | Run the local CI check suite |
-| `local-review` | `scripts/developer_tools/i_local_review.py` | LLM-review uncommitted local changes |
-| `pr-review` | `scripts/developer_tools/l_pr_review.py` | LLM-review an open PR |
-| `dependabot-auto-merge` | `scripts/developer_tools/m_dependabot_auto_merge.py` | Auto-merge green Dependabot PRs |
-| `review-issue` | `scripts/developer_tools/o_review_issue.py` | Refresh a stale issue with an LLM |
-| `add-issue-to-pr` | `scripts/developer_tools/p_add_issue_to_pr.py` | Link an issue to its PR |
-| `clear-ai-slop-issues` | `scripts/developer_tools/q_clear_ai_slop_issues.py` | Detect and close duplicate/stale/AI-slop issues |
-| `commit-and-push` | `scripts/developer_tools/lib/commit_and_push.py` | Commit with an LLM-drafted message and push |
-| `publish-pr` | `scripts/developer_tools/lib/publish_pr.py` | Publish a PR from the current branch |
-
-Run any command with `--help` for its full argument list.
+Run any command with `--help` for its full flags. Every command above also
+installs as `cicaid <command>` (e.g. `cicaid sync-issues`) if you'd rather
+remember one name than fifteen.
 
 ### PowerShell wrappers
 
 [`templates/`](templates/) has example PowerShell wrappers
-(`j_commit_and_push.ps1`, `k_publish-pr.ps1`) that call the installed console
-scripts above with named parameters. Copy these into a consuming repo if you want
-the `.ps1` calling convention; they are not part of the installed package.
+(`j_commit_and_push.ps1`, `k_publish-pr.ps1`) that call the installed commands
+above with named parameters, if you'd rather use that calling convention. Copy
+them into a consuming repo — they aren't part of the installed package.
 
-`templates/g_run_tests.ps1` is **not** wired to a console script — it invokes
-`pytest tests --cov=backend`, which encodes `allotmint`'s own test layout. Treat it
-as a starting point to adapt per repo, not a shared command.
+`templates/g_run_tests.ps1` is a plain example (`pytest tests --cov=backend`,
+`allotmint`'s own test layout), not wired to a shared command — adapt it per repo.
 
-`run-ci-checks` reads its check list from a `.cicaid-checks.toml` file in the target
-repo's root (see `templates/allotmint-mcp.cicaid-checks.toml` for a Maven/Java
-example). A repo with no config file falls back to `DEFAULT_CHECKS` in
-[`h_run_ci_checks.py`](src/cicaid_devtools/h_run_ci_checks.py) — allotmint's own
-pytest/npm/CDK checks, which is *only* correct for allotmint itself. Every other
-consumer repo (allotmint-mcp, ai-systems-lab, ...) should add its own
-`.cicaid-checks.toml` rather than rely on that fallback. Format:
+### Local CI checks
+
+`run-ci-checks` reads its check list from a `.cicaid-checks.toml` file in the
+target repo's root (see `templates/allotmint-mcp.cicaid-checks.toml` for a
+Maven/Java example), so it runs whatever *that* repo's own CI actually does. A
+repo without a config file falls back to `DEFAULT_CHECKS` in
+[`h_run_ci_checks.py`](src/cicaid_devtools/h_run_ci_checks.py) (allotmint's own
+Python/npm/CDK checks — only correct for allotmint itself). Format:
 
 ```toml
 [[checks]]
@@ -115,7 +103,8 @@ commands = ["./mvnw verify"]                  # run via `shell=True`, one at a t
 
 ```
 src/cicaid_devtools/
-  a_sync_issues.py ... q_clear_ai_slop_issues.py   # the a_/b_/c_/.../q_ CLI chain
+  cli.py                                      # `cicaid` umbrella dispatcher
+  a_sync_issues.py ... q_clear_ai_slop_issues.py   # the a_/b_/c_/.../q_ command chain
   lib/                                        # shared helpers (github_repo, llm_common,
                                                # ollama_common, remote_openai_common,
                                                # deepseek_review, review_common, ...)
@@ -133,17 +122,23 @@ pytest
 Bump `version` in `pyproject.toml`, then push a matching tag:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 The [release workflow](.github/workflows/release.yml) builds the sdist/wheel,
 publishes them as assets on a new GitHub Release, and pushes a commit updating
 this README's install commands to the new version — all automatically.
 
-## Related issues
+## Background
 
-- [allotmint-mcp#374](https://github.com/leonarduk/allotmint-mcp/issues/374) — parent: move developer tools into a shared repo
-- [allotmint#6151](https://github.com/leonarduk/allotmint/issues/6151) — migrate allotmint off its local copy
-- [allotmint-mcp#404](https://github.com/leonarduk/allotmint-mcp/issues/404) — migrate allotmint-mcp off its local copy
-- [ai-systems-lab#81](https://github.com/leonarduk/ai-systems-lab/issues/81) — adopt this package as a new consumer
+The commands here used to be `scripts/developer_tools/`, duplicated (and slowly
+drifting) between [`allotmint`](https://github.com/leonarduk/allotmint) and
+[`allotmint-mcp`](https://github.com/leonarduk/allotmint-mcp). cicaid is the
+single source of truth now — see
+[allotmint-mcp#374](https://github.com/leonarduk/allotmint-mcp/issues/374) for
+the original migration proposal and
+[allotmint#6151](https://github.com/leonarduk/allotmint/issues/6151) /
+[allotmint-mcp#404](https://github.com/leonarduk/allotmint-mcp/issues/404) /
+[ai-systems-lab#81](https://github.com/leonarduk/ai-systems-lab/issues/81) for
+the per-repo migrations.
