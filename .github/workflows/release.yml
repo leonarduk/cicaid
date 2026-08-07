@@ -23,8 +23,8 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Update README to this release's version
-        run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
+#      - name: Update README to this release's version
+#        run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
 
       - name: Push README update to main
         run: |
