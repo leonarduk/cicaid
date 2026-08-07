@@ -77,11 +77,27 @@ def get_main_branch_sha(owner: str, repo: str) -> str:
 
 
 def create_branch(owner: str, repo: str, branch_name: str, sha: str, token: str | None = None) -> None:
-    """Create a branch in the remote repo."""
-    url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
+    """Create a branch in the remote repo.
+
+    First checks whether the branch ref already exists via a GET request.
+    Only POSTs to create if the ref is absent (404).
+    """
     headers = {"Accept": "application/vnd.github.v3+json"}
     if token:
         headers["Authorization"] = f"token {token}"
+
+    # Check if the branch already exists
+    ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{branch_name}"
+    try:
+        resp = requests.get(ref_url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            logger.info("Branch %s already exists, skipping creation.", branch_name)
+            return
+    except requests.RequestException:
+        pass  # Best-effort check; proceed to creation attempt
+
+    # Branch does not exist; create it
+    url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
     data = {"ref": f"refs/heads/{branch_name}", "sha": sha}
     try:
         resp = requests.post(url, json=data, headers=headers, timeout=10)
