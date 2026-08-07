@@ -6,6 +6,7 @@ dist/
 .venv/
 venv/
 .idea/
+.idea/workspace.xml
 .pytest_cache/
 .ruff_cache/
 .coverage
