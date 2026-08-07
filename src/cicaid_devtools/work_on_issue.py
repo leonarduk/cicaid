@@ -14,7 +14,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
-from github_repo import get_repo_info  # noqa: E402
+from github_repo import get_repo_info, is_wiki_repo  # noqa: E402
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -70,7 +70,7 @@ def main() -> None:
 
     token = args.token or os.getenv("GITHUB_TOKEN")
 
-    # Issue lookups go to the non-wiki repo (get_repo_info strips .wiki).
+    # Issue lookups always go to the non-wiki repo.
     try:
         issue_owner, issue_repo = get_repo_info()
     except ValueError as exc:
@@ -88,34 +88,26 @@ def main() -> None:
         logger.error("Error: Issue #%d has no title", args.issue_id)
         sys.exit(1)
 
+    # Wiki repos don't support branches or PRs on GitHub -- work on the
+    # default branch and push when done (wikis update immediately).
+    if is_wiki_repo():
+        logger.info(
+            "Wiki repo detected -- edit files directly on the default "
+            "branch and push when done (wikis update immediately)."
+        )
+        issue_file = Path(f".issue-{args.issue_id}.md")
+        issue_file.write_text(f"{title}\n\n{body}\n", encoding="utf-8")
+        logger.info("Wrote issue to %s", issue_file)
+        logger.info(
+            "\n[OK] Issue #%d loaded. Edit on the default branch and push.",
+            args.issue_id,
+        )
+        return
+
     # Create branch name
     slug = slugify(title)
     branch_name = f"{args.type}/issue-{args.issue_id}-{slug}"
     logger.info("Branch name: %s", branch_name)
-
-    # Wiki repos don't support branches or PRs on GitHub - work on master
-    # directly, push when done, and the wiki updates immediately.
-    try:
-        _current_repo = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            capture_output=True, text=True, encoding="utf-8", check=True,
-        )
-        _current_name = _current_repo.stdout.strip().split("/")[-1].replace(".git", "")
-    except Exception:
-        _current_name = ""
-
-    if _current_name.endswith(".wiki"):
-        logger.info(
-            "Wiki repo detected - skipping branch creation. Edit files "
-            "directly on master and push when done (wikis update immediately)."
-        )
-        # Write issue to markdown file for reference
-        issue_file = Path(f".issue-{args.issue_id}.md")
-        content = f"{title}\n\n{body}\n"
-        issue_file.write_text(content, encoding="utf-8")
-        logger.info("Wrote issue to %s", issue_file)
-        logger.info("\n[OK] Issue #%d loaded. Edit files on master and push.", args.issue_id)
-        return
 
     # Ensure we have the latest from origin and are on a stable base
     logger.info("Fetching from origin...")
@@ -148,7 +140,6 @@ def main() -> None:
 
     if remote_exists:
         logger.info("Branch %s already exists on remote", branch_name)
-        # Fetch the existing branch
         subprocess.run(
             ["git", "fetch", "origin", branch_name], check=True, capture_output=True
         )
@@ -157,7 +148,6 @@ def main() -> None:
         subprocess.run(["git", "checkout", branch_name], check=True)
         subprocess.run(["git", "push", "-u", "origin", branch_name], check=True)
     else:
-        # Create branch locally from origin/main (or origin/master)
         logger.info("Creating branch...")
         base_ref = None
         for candidate in ("origin/main", "origin/master"):
@@ -186,10 +176,20 @@ def main() -> None:
             check=True,
         )
 
+    # Checkout the branch if not already on it
+    try:
+        current = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8", check=True,
+        )
+        if current.stdout.strip() != branch_name:
+            subprocess.run(["git", "checkout", branch_name], check=True)
+    except subprocess.CalledProcessError:
+        pass
+
     # Write issue to markdown file
     issue_file = Path(f".issue-{args.issue_id}.md")
-    content = f"{title}\n\n{body}\n"
-    issue_file.write_text(content, encoding="utf-8")
+    issue_file.write_text(f"{title}\n\n{body}\n", encoding="utf-8")
     logger.info("Wrote issue to %s", issue_file)
     logger.info("\n[OK] Ready to work on issue #%d", args.issue_id)
 

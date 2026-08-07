@@ -18,7 +18,7 @@ from typing import Optional
 import requests
 
 
-from cicaid_devtools.lib.github_repo import get_repo_info  # shared implementation
+from cicaid_devtools.lib.github_repo import get_repo_info, get_actual_repo_name, is_wiki_repo  # shared implementation
 
 
 def get_current_branch() -> str:
@@ -37,7 +37,7 @@ def get_current_branch() -> str:
         sys.exit(1)
 
 
-def _get_actual_repo_name() -> str:
+def get_actual_repo_name() -> str:
     """Return the actual repo name from git remote (keeps .wiki suffix).
 
     Unlike ``get_repo_info()`` this does *not* strip ``.wiki``, because
@@ -503,7 +503,7 @@ def main() -> None:
     # Branch and PR operations use the actual current repo.
     try:
         issue_owner, issue_repo = get_repo_info()
-        actual_repo = _get_actual_repo_name()
+        actual_repo = get_actual_repo_name()
     except ValueError as exc:
         logger.error(f"Error: {exc}")
         sys.exit(1)
@@ -584,7 +584,7 @@ def main() -> None:
         pr_body += f"\n\nCloses #{issue_id}"
 
     # Create PR (wiki repos don't support PRs on GitHub)
-    if repo.endswith(".wiki"):
+    if is_wiki_repo():
         logger.info(
             "Skipping PR creation: %s/%s is a wiki repo (GitHub wiki repos "
             "don't support pull requests). Changes have been pushed to the "
