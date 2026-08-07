@@ -23,14 +23,6 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "${{ github.ref_name }}" dist/* \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
-
       - name: Update README to this release's version
         run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
 
@@ -44,4 +36,17 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add README.md
           git commit -m "Update README install commands to ${{ github.ref_name }}"
-          git push origin HEAD:main
+          if git push origin HEAD:main 2>&1; then
+            echo "Pushed README update to main."
+          else
+            echo "::warning::Push to main failed (branch protection may be enabled)."
+            echo "::warning::The README will be updated on the next successful push to main."
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
