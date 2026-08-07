@@ -1,6 +1,6 @@
 """Shared helpers for parsing LLM issue-review responses.
 
-Used by both b_create_issue.py (drafting a new issue) and n_review_issue.py
+Used by both create_issue.py (drafting a new issue) and n_review_issue.py
 (refreshing an existing one), which send differently-worded prompts to the
 model but expect the same TITLE:/BODY: response format back.
 """

@@ -493,30 +493,30 @@ def _closing_comment(candidate: CloseCandidate) -> str:
     if candidate.reason == "duplicate":
         return (
             f"[bot] *Automated cleanup:* closing as {candidate.evidence}. "
-            "This issue was detected by `q_clear_ai_slop_issues.py` --- "
+            "This issue was detected by `clear_ai_slop_issues.py` --- "
             "if this was a mistake, please re-open or comment."
         )
     if candidate.reason == "already-closed":
         return (
             f"[bot] *Automated cleanup:* closing because {candidate.evidence}. "
-            "This issue was detected by `q_clear_ai_slop_issues.py` --- "
+            "This issue was detected by `clear_ai_slop_issues.py` --- "
             "if the work still needs doing, please re-open or comment."
         )
     if candidate.reason == "approve-artifact":
         return (
             f"[bot] *Automated cleanup:* {candidate.evidence}. "
-            "This issue was detected by `q_clear_ai_slop_issues.py` --- "
+            "This issue was detected by `clear_ai_slop_issues.py` --- "
             "if this is actually an actionable issue, please re-open or comment."
         )
     if candidate.reason == "superseded":
         return (
             f"[bot] *Automated cleanup:* closing because {candidate.evidence}. "
-            "This issue was detected by `q_clear_ai_slop_issues.py` --- "
+            "This issue was detected by `clear_ai_slop_issues.py` --- "
             "if this is still relevant, please re-open or comment."
         )
     return (
         f"[bot] *Automated cleanup:* closing ({candidate.reason}). {candidate.evidence}. "
-        "Detected by `q_clear_ai_slop_issues.py`. "
+        "Detected by `clear_ai_slop_issues.py`. "
         "If this was a mistake, please re-open or comment."
     )
 

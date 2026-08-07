@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from cicaid_devtools.h_run_ci_checks import (
+from cicaid_devtools.run_ci_checks import (
     Check,
     DEFAULT_CHECKS,
     load_checks,
