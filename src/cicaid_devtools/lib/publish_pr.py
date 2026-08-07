@@ -36,36 +36,6 @@ def get_current_branch() -> str:
         logger.error(f"Failed to get current branch: {exc}")
         sys.exit(1)
 
-
-def get_actual_repo_name() -> str:
-    """Return the actual repo name from git remote (keeps .wiki suffix).
-
-    Unlike ``get_repo_info()`` this does *not* strip ``.wiki``, because
-    branch and PR operations must target the current repository.
-    """
-    import re as _re
-    try:
-        result = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise ValueError(
-            f"Could not determine repo from remote: {exc}"
-        ) from exc
-
-    match = _re.search(
-        r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$",
-        result.stdout.strip(),
-    )
-    if match:
-        return match.group(2)
-    raise ValueError("Could not determine repo from git remote origin")
-
-
 def extract_issue_id(branch_name: str) -> Optional[int]:
     """Extract issue ID from branch name (e.g., 'fix/issue-4445-slug' -> 4445)."""
     match = re.search(r"issue-(\d+)", branch_name)
