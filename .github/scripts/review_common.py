@@ -255,12 +255,12 @@ def emit_invalid_key_notice(provider_name: str, detail: str) -> int:
     """Print a notice that the API key was rejected (401/403) and return success.
 
     Unlike a missing key (no secret configured at all), this means a secret
-    exists but is wrong, expired, or lacks permissions.  The message includes
-    the HTTP status and body so the admin can diagnose without reading logs.
+    exists but is wrong, expired, or lacks permissions.  Avoid printing raw
+    provider auth error details because they may contain sensitive information.
     """
     print(
         f"**Skipped: API key rejected**\n\n"
-        f"The {provider_name} API rejected the configured key: {detail}\n\n"
+        f"The {provider_name} API rejected the configured key.\n\n"
         f"**To fix this**:\n"
         f"1. Verify the API key is valid and not expired.\n"
         f"2. Go to **Settings > Secrets and variables > Actions** in this repo.\n"
