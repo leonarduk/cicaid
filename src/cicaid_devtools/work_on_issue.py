@@ -93,8 +93,13 @@ def create_branch(owner: str, repo: str, branch_name: str, sha: str, token: str 
         if resp.status_code == 200:
             logger.info("Branch %s already exists, skipping creation.", branch_name)
             return
-    except requests.RequestException:
-        pass  # Best-effort check; proceed to creation attempt
+        if resp.status_code != 404:
+            logger.warning(
+                "Unexpected status %d checking branch ref, will attempt creation.",
+                resp.status_code,
+            )
+    except requests.RequestException as exc:
+        logger.warning("Could not check for existing branch (%s); will attempt creation.", exc)
 
     # Branch does not exist; create it
     url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
