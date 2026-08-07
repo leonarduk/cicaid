@@ -235,7 +235,18 @@ class ProviderOutageError(RuntimeError):
     Kept distinct from `SystemExit(1)` raised for non-retryable non-auth errors
     (bad model name, malformed JSON) so callers can treat a genuine transient
     outage as a soft-fail advisory instead of a hard workflow failure.
+
+    The message is automatically redacted on construction so that callers who
+    catch and log this exception never leak env var names through exception
+    propagation paths.
     """
+
+    def __init__(self, *args):
+        # Redact env var names before calling the parent RuntimeError
+        # constructor so the message is safe regardless of who catches this.
+        if args:
+            args = (redact_env_var_names(str(args[0])),) + args[1:]
+        super().__init__(*args)
 
 
 class ProviderAuthError(RuntimeError):
@@ -246,7 +257,18 @@ class ProviderAuthError(RuntimeError):
     config bug).  Callers should emit an "invalid key" skip notice so the
     workflow soft-fails rather than blocking the merge gate over a secret that
     needs a human to fix.
+
+    The message is automatically redacted on construction so that callers who
+    catch and log this exception never leak env var names through exception
+    propagation paths.
     """
+
+    def __init__(self, *args):
+        # Redact env var names before calling the parent RuntimeError
+        # constructor so the message is safe regardless of who catches this.
+        if args:
+            args = (redact_env_var_names(str(args[0])),) + args[1:]
+        super().__init__(*args)
 
 
 def emit_outage_notice(provider_name: str, detail: str) -> int:
@@ -290,12 +312,14 @@ def emit_invalid_key_notice(provider_name: str, detail: str) -> int:
     """Print a notice that the API key was rejected (401/403) and return success.
 
     Unlike a missing key (no secret configured at all), this means a secret
-    exists but is wrong, expired, or lacks permissions.  Avoid printing raw
-    provider auth error details because they may contain sensitive information.
+    exists but is wrong, expired, or lacks permissions.  The ``detail`` string
+    (typically the exception message from the provider) is redacted so env var
+    names are replaced but status-code and other diagnostic hints are kept.
     """
+    safe_detail = redact_env_var_names(detail)
     print(
         f"**Skipped: API key rejected**\n\n"
-        f"The {provider_name} API rejected the configured key.\n\n"
+        f"The {provider_name} API rejected the configured key: {safe_detail}\n\n"
         f"**To fix this**:\n"
         f"1. Verify the API key is valid and not expired.\n"
         f"2. Go to **Settings > Secrets and variables > Actions** in this repo.\n"
@@ -560,19 +584,25 @@ def fetch_review(
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned {exc.code}: {body}"))
             if exc.code in (401, 403):
                 raise ProviderAuthError(
-                    f"{provider_label} API returned {exc.code}: {body}"
+                    redact_env_var_names(
+                        f"{provider_label} API returned {exc.code}: {body}"
+                    )
                 ) from exc
             if exc.code not in RETRYABLE_HTTP_STATUSES:
                 raise SystemExit(1) from exc
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
-                    f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
+                    redact_env_var_names(
+                        f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
+                    )
                 ) from exc
         except urllib.error.URLError as exc:
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API request failed: {exc.reason}"))
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
-                    f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
+                    redact_env_var_names(
+                        f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
+                    )
                 ) from exc
         except json.JSONDecodeError as exc:
             logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned non-JSON response: {exc}"))

@@ -6,6 +6,8 @@ Verifies that:
 2. Legitimate non-secret identifiers (MAX_RETRIES, PR_TITLE) are not redacted.
 3. Multiple env var names in a single message are all redacted.
 4. Edge cases: empty string, no matches, partial matches.
+5. Exception messages (ProviderAuthError, ProviderOutageError) are redacted.
+6. emit_invalid_key_notice preserves diagnostic detail after redaction.
 """
 
 from __future__ import annotations
@@ -197,3 +199,56 @@ class TestRedactEnvVarNames:
         logged = caplog.text
         assert "DEEPSEEK_API_KEY" not in logged
         assert "[REDACTED_ENV_VAR]" in logged
+
+    # ------------------------------------------------------------------
+    # Exception messages: ProviderAuthError and ProviderOutageError must
+    # redact env var names so that callers who catch and log them never
+    # leak secret names through exception propagation paths.
+    # ------------------------------------------------------------------
+
+    def test_provider_auth_error_msg_redacts_body(self):
+        """ProviderAuthError message must not contain env var names."""
+        with pytest.raises(review_common.ProviderAuthError) as exc_info:
+            raise review_common.ProviderAuthError(
+                "DeepSeek API returned 401: Invalid DEEPSEEK_API_KEY"
+            )
+        msg = str(exc_info.value)
+        assert "DEEPSEEK_API_KEY" not in msg
+        assert "[REDACTED_ENV_VAR]" in msg
+        assert "401" in msg  # status code preserved
+
+    def test_provider_outage_error_msg_redacts_reason(self):
+        """ProviderOutageError message must not contain env var names."""
+        with pytest.raises(review_common.ProviderOutageError) as exc_info:
+            raise review_common.ProviderOutageError(
+                "API request failed after 5 attempts: GITHUB_TOKEN not found"
+            )
+        msg = str(exc_info.value)
+        assert "GITHUB_TOKEN" not in msg
+        assert "[REDACTED_ENV_VAR]" in msg
+
+    # ------------------------------------------------------------------
+    # emit_invalid_key_notice: detail is redacted but non-sensitive parts
+    # (status code, diagnostic hints) are preserved in output.
+    # ------------------------------------------------------------------
+
+    def test_emit_invalid_key_notice_redacts_detail(self, capsys):
+        """The notice must redact env var names in detail but keep status code."""
+        review_common.emit_invalid_key_notice(
+            "DeepSeek", "DeepSeek API returned 401: Invalid OPENAI_API_KEY"
+        )
+        out = capsys.readouterr().out
+        assert "OPENAI_API_KEY" not in out
+        assert "[REDACTED_ENV_VAR]" in out
+        assert "401" in out  # status code preserved
+        assert "API KEY REJECTED" in out  # skip marker still present (spaces, not underscores)
+
+    def test_emit_invalid_key_notice_detail_passed_through_when_clean(self, capsys):
+        """Detail without env var names is preserved verbatim."""
+        review_common.emit_invalid_key_notice(
+            "DeepSeek", "DeepSeek API returned 401: Unauthorized"
+        )
+        out = capsys.readouterr().out
+        assert "Unauthorized" in out  # no env var, detail preserved
+        assert "[REDACTED_ENV_VAR]" not in out
+        assert "401" in out
