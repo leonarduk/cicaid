@@ -11,7 +11,7 @@ remote — no per-repo setup beyond an optional config file for the checks list.
 
 <!-- cicaid-version:start -->
 ```bash
-pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.4.6/cicaid_devtools-0.4.6-py3-none-any.whl"
+pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.4.7/cicaid_devtools-0.4.7-py3-none-any.whl"
 ```
 <!-- cicaid-version:end -->
 
@@ -25,7 +25,7 @@ file for local runs (CI should set real env vars instead):
 
 <!-- cicaid-version-dotenv:start -->
 ```bash
-pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/releases/download/v0.4.6/cicaid_devtools-0.4.6-py3-none-any.whl"
+pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/releases/download/v0.4.7/cicaid_devtools-0.4.7-py3-none-any.whl"
 ```
 <!-- cicaid-version-dotenv:end -->
 
