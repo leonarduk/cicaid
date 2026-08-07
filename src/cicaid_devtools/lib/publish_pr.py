@@ -18,7 +18,7 @@ from typing import Optional
 import requests
 
 
-from cicaid_devtools.lib.github_repo import get_repo_info  # shared implementation
+from cicaid_devtools.lib.github_repo import get_repo_info, get_actual_repo_name, is_wiki_repo  # shared implementation
 
 
 def get_current_branch() -> str:
@@ -35,7 +35,6 @@ def get_current_branch() -> str:
     except subprocess.CalledProcessError as exc:
         logger.error(f"Failed to get current branch: {exc}")
         sys.exit(1)
-
 
 def extract_issue_id(branch_name: str) -> Optional[int]:
     """Extract issue ID from branch name (e.g., 'fix/issue-4445-slug' -> 4445)."""
@@ -147,31 +146,35 @@ def stage_and_commit(files: Optional[list[str]], message: str, branch: str, defa
 
 
 def branch_is_ahead_of_main(branch: str, default_branch: str) -> bool:
-    """Check if branch has commits ahead of the default branch."""
-    try:
-        # First check if default_branch is an ancestor of branch
-        result = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", default_branch, branch],
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            return False
+    """Check if branch has commits ahead of the default branch.
 
-        # Then verify branch actually has commits NOT in default_branch
-        result = subprocess.run(
-            ["git", "rev-list", "--count", f"{default_branch}..{branch}"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if result.returncode == 0:
-            commit_count = int(result.stdout.strip())
-            return commit_count > 0
-        return False
-    except (subprocess.CalledProcessError, ValueError):
-        return False
+    Compares against the remote tracking ref so the check works even when
+    the local default branch is stale.  Tries ``origin/{default_branch}``,
+    ``origin/main``, and ``origin/master`` in order.
+    """
+    candidates = [f"origin/{default_branch}", "origin/main", "origin/master"]
+    for remote_base in candidates:
+        try:
+            result = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", remote_base, branch],
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                continue
+
+            result = subprocess.run(
+                ["git", "rev-list", "--count", f"{remote_base}..{branch}"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            if result.returncode == 0:
+                return int(result.stdout.strip()) > 0
+        except (subprocess.CalledProcessError, ValueError):
+            continue
+    return False
 
 
 def push_to_remote(branch: str) -> bool:
@@ -466,14 +469,20 @@ def main() -> None:
         logger.error("Error: Could not determine git root directory")
         sys.exit(1)
 
-    # Get repo info
+    # Issue lookups go to the non-wiki repo (get_repo_info strips .wiki).
+    # Branch and PR operations use the actual current repo.
     try:
-        owner, repo = get_repo_info()
+        issue_owner, issue_repo = get_repo_info()
+        actual_repo = get_actual_repo_name()
     except ValueError as exc:
         logger.error(f"Error: {exc}")
         sys.exit(1)
 
-    logger.info(f"Using repository: {owner}/{repo}")
+    owner = issue_owner
+    repo = actual_repo
+    logger.info(f"Issue from: {owner}/{issue_repo}")
+    if repo != issue_repo:
+        logger.info(f"PR target:  {owner}/{repo}")
 
     # Get current branch
     branch = get_current_branch()
@@ -490,7 +499,7 @@ def main() -> None:
 
     # Fetch issue
     logger.info(f"Fetching issue #{issue_id}...")
-    issue = fetch_issue(owner, repo, issue_id)
+    issue = fetch_issue(issue_owner, issue_repo, issue_id)
     if not issue:
         sys.exit(1)
 
@@ -544,7 +553,18 @@ def main() -> None:
     if f"Closes #{issue_id}" not in pr_body:
         pr_body += f"\n\nCloses #{issue_id}"
 
-    # Create PR
+    # Create PR (wiki repos don't support PRs on GitHub)
+    if is_wiki_repo():
+        logger.info(
+            "Skipping PR creation: %s/%s is a wiki repo (GitHub wiki repos "
+            "don't support pull requests). Changes have been pushed to the "
+            "branch.",
+            owner,
+            repo,
+        )
+        logger.info("\n[OK] Branch '%s' pushed to %s/%s", branch, owner, repo)
+        return
+
     check_gh_available()
     logger.info("Creating PR...")
     pr_url = create_pr(owner, repo, branch, default_branch, f"[Issue #{issue_id}] {issue_title}", pr_body)
