@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-and-release:
@@ -27,6 +28,8 @@ jobs:
         run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
 
       - name: Push README update to main
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if git diff --quiet README.md; then
             echo "README.md unchanged; nothing to push."
@@ -36,11 +39,21 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add README.md
           git commit -m "Update README install commands to ${{ github.ref_name }}"
-          if git push origin HEAD:main 2>&1; then
-            echo "Pushed README update to main."
-          else
-            echo "::warning::Push to main failed (branch protection may be enabled)."
-            echo "::warning::The README will be updated on the next successful push to main."
+
+          # Push to a temp branch and merge via PR (works with branch protection)
+          BRANCH="readme-bump-${GITHUB_REF_NAME#v}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Update README install commands to ${{ github.ref_name }}" \
+            --body "Automated version bump triggered by [${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})."
+
+          if ! gh pr merge "$BRANCH" --merge; then
+            echo "::warning::Could not auto-merge the README PR."
+            echo "::warning::A PR was created — merge it manually to update the README."
           fi
 
       - name: Create GitHub Release
