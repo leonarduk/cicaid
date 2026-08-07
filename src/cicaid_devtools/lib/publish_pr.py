@@ -37,6 +37,35 @@ def get_current_branch() -> str:
         sys.exit(1)
 
 
+def _get_actual_repo_name() -> str:
+    """Return the actual repo name from git remote (keeps .wiki suffix).
+
+    Unlike ``get_repo_info()`` this does *not* strip ``.wiki``, because
+    branch and PR operations must target the current repository.
+    """
+    import re as _re
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(
+            f"Could not determine repo from remote: {exc}"
+        ) from exc
+
+    match = _re.search(
+        r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$",
+        result.stdout.strip(),
+    )
+    if match:
+        return match.group(2)
+    raise ValueError("Could not determine repo from git remote origin")
+
+
 def extract_issue_id(branch_name: str) -> Optional[int]:
     """Extract issue ID from branch name (e.g., 'fix/issue-4445-slug' -> 4445)."""
     match = re.search(r"issue-(\d+)", branch_name)
@@ -147,31 +176,35 @@ def stage_and_commit(files: Optional[list[str]], message: str, branch: str, defa
 
 
 def branch_is_ahead_of_main(branch: str, default_branch: str) -> bool:
-    """Check if branch has commits ahead of the default branch."""
-    try:
-        # First check if default_branch is an ancestor of branch
-        result = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", default_branch, branch],
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            return False
+    """Check if branch has commits ahead of the default branch.
 
-        # Then verify branch actually has commits NOT in default_branch
-        result = subprocess.run(
-            ["git", "rev-list", "--count", f"{default_branch}..{branch}"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if result.returncode == 0:
-            commit_count = int(result.stdout.strip())
-            return commit_count > 0
-        return False
-    except (subprocess.CalledProcessError, ValueError):
-        return False
+    Compares against the remote tracking ref so the check works even when
+    the local default branch is stale.  Tries ``origin/{default_branch}``,
+    ``origin/main``, and ``origin/master`` in order.
+    """
+    candidates = [f"origin/{default_branch}", "origin/main", "origin/master"]
+    for remote_base in candidates:
+        try:
+            result = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", remote_base, branch],
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                continue
+
+            result = subprocess.run(
+                ["git", "rev-list", "--count", f"{remote_base}..{branch}"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            if result.returncode == 0:
+                return int(result.stdout.strip()) > 0
+        except (subprocess.CalledProcessError, ValueError):
+            continue
+    return False
 
 
 def push_to_remote(branch: str) -> bool:
@@ -466,14 +499,20 @@ def main() -> None:
         logger.error("Error: Could not determine git root directory")
         sys.exit(1)
 
-    # Get repo info
+    # Issue lookups go to the non-wiki repo (get_repo_info strips .wiki).
+    # Branch and PR operations use the actual current repo.
     try:
-        owner, repo = get_repo_info()
+        issue_owner, issue_repo = get_repo_info()
+        actual_repo = _get_actual_repo_name()
     except ValueError as exc:
         logger.error(f"Error: {exc}")
         sys.exit(1)
 
-    logger.info(f"Using repository: {owner}/{repo}")
+    owner = issue_owner
+    repo = actual_repo
+    logger.info(f"Issue from: {owner}/{issue_repo}")
+    if repo != issue_repo:
+        logger.info(f"PR target:  {owner}/{repo}")
 
     # Get current branch
     branch = get_current_branch()
@@ -490,7 +529,7 @@ def main() -> None:
 
     # Fetch issue
     logger.info(f"Fetching issue #{issue_id}...")
-    issue = fetch_issue(owner, repo, issue_id)
+    issue = fetch_issue(issue_owner, issue_repo, issue_id)
     if not issue:
         sys.exit(1)
 
