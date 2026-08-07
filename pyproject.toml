@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cicaid-devtools"
-version = "0.3.0"
+dynamic = ["version"]
 description = "Shared issue/PR/review automation scripts (the developer_tools pipeline) for leonarduk repos"
 requires-python = ">=3.11"
 dependencies = [
@@ -37,6 +37,8 @@ add-issue-to-pr = "cicaid_devtools.add_issue_to_pr:main"
 clear-ai-slop-issues = "cicaid_devtools.clear_ai_slop_issues:main"
 commit-and-push = "cicaid_devtools.lib.commit_and_push:main"
 publish-pr = "cicaid_devtools.lib.publish_pr:main"
+
+[tool.setuptools_scm]
 
 [tool.setuptools.packages.find]
 where = ["src"]
