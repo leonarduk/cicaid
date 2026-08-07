@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import logging
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,20 @@ TRUNCATION_NOTICE_TEMPLATE = (
     "to stay within the 120k-character review budget while preserving whole-file diff blocks]"
 )
 
+# Pattern matching environment variable names that contain known secret-name
+# suffixes (`_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`, `_PASS`, `_AUTH`,
+# `_CREDENTIAL`, `_API`).  Requires at least one underscore and all-caps
+# characters so legitimate config keys (e.g. `MAX_RETRIES`, `PR_TITLE`)
+# are not redacted.  Applied to stderr log messages only; user-facing
+# stdout output (e.g. `emit_missing_key_notice`) intentionally names the
+# secret so the repo admin knows what to configure.
+_ENV_VAR_NAME_RE = re.compile(
+    r'\b[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)*'
+    r'_(?:TOKEN|KEY|SECRET|PASS(?:WORD)?|AUTH|CREDENTIAL|API)'
+    r'(?:_[A-Z][A-Z0-9]*)*\b'
+)
+_REDACTED_PLACEHOLDER = "[REDACTED_ENV_VAR]"
+
 
 @dataclass(frozen=True)
 class ReviewContext:
@@ -67,11 +82,31 @@ class ReviewContext:
     verified_facts: str = ""
 
 
+def redact_env_var_names(message: str) -> str:
+    """Replace environment variable names with a placeholder in error/log messages.
+
+    Matches ALL_CAPS identifiers that contain known secret-name suffixes
+    (e.g. ``DEEPSEEK_API_KEY``, ``GITHUB_TOKEN``) and replaces each match
+    with ``[REDACTED_ENV_VAR]``.  Legitimate non-secret config keys (e.g.
+    ``MAX_RETRIES``, ``PR_TITLE``) are left unchanged.
+
+    Callers that emit messages to stderr (logs, error output) should route
+    through this function.  User-facing stdout messages (e.g. the
+    ``emit_missing_key_notice`` body that tells an admin which secret to
+    configure) are intentionally left unredacted.
+    """
+    return _ENV_VAR_NAME_RE.sub(_REDACTED_PLACEHOLDER, message)
+
+
 def get_required_env(name: str) -> str:
-    """Return a required environment variable or raise SystemExit with a clear error."""
+    """Return a required environment variable or raise SystemExit with a clear error.
+
+    The env var name is redacted in stderr so that security scanners and log
+    consumers do not see which secret is missing.
+    """
     value = os.environ.get(name, "")
     if not value:
-        logger.error(f"ERROR: {name} not set")
+        logger.error(redact_env_var_names(f"ERROR: {name} not set"))
         raise SystemExit(1)
     return value
 
@@ -520,8 +555,9 @@ def fetch_review(
             break
         except urllib.error.HTTPError as exc:
             # Keep the provider response in stderr so maintainers can distinguish auth, quota, and API failures.
+            # Redact any env var names that might appear in the error body or URL.
             body = exc.read().decode()
-            logger.error(f"ERROR: {provider_label} API returned {exc.code}: {body}")
+            logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned {exc.code}: {body}"))
             if exc.code in (401, 403):
                 raise ProviderAuthError(
                     f"{provider_label} API returned {exc.code}: {body}"
@@ -533,13 +569,13 @@ def fetch_review(
                     f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
                 ) from exc
         except urllib.error.URLError as exc:
-            logger.error(f"ERROR: {provider_label} API request failed: {exc.reason}")
+            logger.error(redact_env_var_names(f"ERROR: {provider_label} API request failed: {exc.reason}"))
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
                     f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
                 ) from exc
         except json.JSONDecodeError as exc:
-            logger.error(f"ERROR: {provider_label} API returned non-JSON response: {exc}")
+            logger.error(redact_env_var_names(f"ERROR: {provider_label} API returned non-JSON response: {exc}"))
             raise SystemExit(1) from exc
 
         delay = RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
