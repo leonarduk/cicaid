@@ -237,10 +237,10 @@ def emit_missing_key_notice(provider_name: str, key_env: str) -> int:
     so the repo admin can fix it without reading code.
     """
     print(
-        f"## {provider_name} AI Code Review — Skipped: API key not configured\n\n"
+        f"**Skipped: API key not configured**\n\n"
         f"The `{key_env}` repository secret is not set.\n\n"
         f"**To enable {provider_name} reviews**, add `{key_env}` as a repository secret:\n"
-        f"1. Go to **Settings → Secrets and variables → Actions** in this repo.\n"
+        f"1. Go to **Settings > Secrets and variables > Actions** in this repo.\n"
         f"2. Click **New repository secret**.\n"
         f"3. Name: `{key_env}`\n"
         f"4. Value: your {provider_name} API key.\n\n"
@@ -259,11 +259,11 @@ def emit_invalid_key_notice(provider_name: str, detail: str) -> int:
     the HTTP status and body so the admin can diagnose without reading logs.
     """
     print(
-        f"## {provider_name} AI Code Review — Skipped: API key rejected\n\n"
+        f"**Skipped: API key rejected**\n\n"
         f"The {provider_name} API rejected the configured key: {detail}\n\n"
         f"**To fix this**:\n"
         f"1. Verify the API key is valid and not expired.\n"
-        f"2. Go to **Settings → Secrets and variables → Actions** in this repo.\n"
+        f"2. Go to **Settings > Secrets and variables > Actions** in this repo.\n"
         f"3. Update the `{provider_name.upper()}_API_KEY` secret with a valid key.\n"
         f"4. Re-run this workflow or push a new commit to retry.\n\n"
         f"{API_KEY_INVALID_MARKER}"

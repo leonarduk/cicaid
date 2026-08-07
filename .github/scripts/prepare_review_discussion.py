@@ -17,6 +17,7 @@ import argparse
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 MAX_DISCUSSION_CHARS = 20_000
 TRUNCATION_NOTICE = "\n\n[discussion truncated to stay within the review budget]"
@@ -77,7 +78,14 @@ def find_review_anchor(comments: list[dict], provider_name: str) -> str:
         for comment in comments
         if not is_human_comment(comment) and comment.get("body", "").startswith(marker)
     ]
-    return max(timestamps, default="")
+    return max(timestamps, default="") if timestamps else ""
+
+
+
+def _parse_timestamp(ts: str) -> datetime:
+    """Parse a GitHub ISO 8601 timestamp to a timezone-aware datetime."""
+    ts = ts.replace("Z", "+00:00")
+    return datetime.fromisoformat(ts)
 
 
 def format_comment(comment: dict, location: str) -> str:
@@ -94,16 +102,17 @@ def collect_discussion(
     issue_comments = gh_api_list(f"repos/{repo}/issues/{pr_number}/comments")
     inline_comments = gh_api_list(f"repos/{repo}/pulls/{pr_number}/comments")
 
-    anchor = find_review_anchor(issue_comments + inline_comments, provider_name)
+    anchor_str = find_review_anchor(issue_comments + inline_comments, provider_name)
+    anchor = _parse_timestamp(anchor_str) if anchor_str else datetime.min.replace(tzinfo=timezone.utc)
 
-    entries: list[tuple[str, str]] = []
+    entries: list[tuple[datetime, str]] = []
     for comment in issue_comments:
-        if is_human_comment(comment) and comment["created_at"] > anchor:
-            entries.append((comment["created_at"], format_comment(comment, "conversation")))
+        if is_human_comment(comment) and _parse_timestamp(comment["created_at"]) > anchor:
+            entries.append((_parse_timestamp(comment["created_at"]), format_comment(comment, "conversation")))
     for comment in inline_comments:
-        if is_human_comment(comment) and comment["created_at"] > anchor:
+        if is_human_comment(comment) and _parse_timestamp(comment["created_at"]) > anchor:
             location = f"inline on {comment.get('path', 'unknown file')}"
-            entries.append((comment["created_at"], format_comment(comment, location)))
+            entries.append((_parse_timestamp(comment["created_at"]), format_comment(comment, location)))
 
     entries.sort(key=lambda entry: entry[0])
     discussion = "\n\n".join(text for _, text in entries)
