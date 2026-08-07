@@ -93,6 +93,30 @@ def main() -> None:
     branch_name = f"{args.type}/issue-{args.issue_id}-{slug}"
     logger.info("Branch name: %s", branch_name)
 
+    # Wiki repos don't support branches or PRs on GitHub - work on master
+    # directly, push when done, and the wiki updates immediately.
+    try:
+        _current_repo = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True, text=True, encoding="utf-8", check=True,
+        )
+        _current_name = _current_repo.stdout.strip().split("/")[-1].replace(".git", "")
+    except Exception:
+        _current_name = ""
+
+    if _current_name.endswith(".wiki"):
+        logger.info(
+            "Wiki repo detected - skipping branch creation. Edit files "
+            "directly on master and push when done (wikis update immediately)."
+        )
+        # Write issue to markdown file for reference
+        issue_file = Path(f".issue-{args.issue_id}.md")
+        content = f"{title}\n\n{body}\n"
+        issue_file.write_text(content, encoding="utf-8")
+        logger.info("Wrote issue to %s", issue_file)
+        logger.info("\n[OK] Issue #%d loaded. Edit files on master and push.", args.issue_id)
+        return
+
     # Ensure we have the latest from origin and are on a stable base
     logger.info("Fetching from origin...")
     try:

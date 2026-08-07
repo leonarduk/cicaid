@@ -583,7 +583,18 @@ def main() -> None:
     if f"Closes #{issue_id}" not in pr_body:
         pr_body += f"\n\nCloses #{issue_id}"
 
-    # Create PR
+    # Create PR (wiki repos don't support PRs on GitHub)
+    if repo.endswith(".wiki"):
+        logger.info(
+            "Skipping PR creation: %s/%s is a wiki repo (GitHub wiki repos "
+            "don't support pull requests). Changes have been pushed to the "
+            "branch.",
+            owner,
+            repo,
+        )
+        logger.info("\n[OK] Branch '%s' pushed to %s/%s", branch, owner, repo)
+        return
+
     check_gh_available()
     logger.info("Creating PR...")
     pr_url = create_pr(owner, repo, branch, default_branch, f"[Issue #{issue_id}] {issue_title}", pr_body)
