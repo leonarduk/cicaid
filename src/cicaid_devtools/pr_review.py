@@ -37,31 +37,7 @@ from review_common import (
 )
 
 
-def get_repo_info() -> tuple[str, str]:
-    """Extract owner and repo from git remote origin."""
-    try:
-        result = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=True,
-        )
-        url = result.stdout.strip()
-        # Handle both https and ssh URLs
-        if url.startswith("git@"):
-            # git@github.com:owner/repo.git
-            match = re.search(r"github\.com[:/]([^/]+)/(.+?)(?:\.git)?$", url)
-        else:
-            # https://github.com/owner/repo.git
-            match = re.search(r"github\.com/([^/]+)/(.+?)(?:\.git)?$", url)
-        if match:
-            return match.group(1), match.group(2).replace(".git", "")
-    except FileNotFoundError as exc:
-        raise ValueError(f"git command not found. Is git installed? {exc}") from exc
-    except subprocess.CalledProcessError:
-        pass
-    raise ValueError("Could not determine GitHub repo from git remote origin")
+from cicaid_devtools.lib.github_repo import get_repo_info  # shared implementation
 
 
 def fetch_pr_details(owner: str, repo: str, pr_id: int) -> dict:

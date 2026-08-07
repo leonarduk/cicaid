@@ -10,7 +10,13 @@ import subprocess
 
 
 def get_repo_info() -> tuple[str, str]:
-    """Extract the GitHub owner and repository name from ``origin``."""
+    """Extract the GitHub owner and repository name from ``origin``.
+
+    If the current checkout is a ``.wiki`` repository (e.g.
+    ``leonarduk/cicaid.wiki``), the returned name is the corresponding
+    non-wiki repository (e.g. ``cicaid``), because wiki repos don't have
+    their own issues or pull-requests.
+    """
     try:
         result = subprocess.run(
             ["git", "config", "--get", "remote.origin.url"],
@@ -24,7 +30,11 @@ def get_repo_info() -> tuple[str, str]:
 
     match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$", result.stdout.strip())
     if match:
-        return match.group(1), match.group(2)
+        owner = match.group(1)
+        repo = match.group(2)
+        if repo.endswith(".wiki"):
+            repo = repo[: -len(".wiki")]
+        return owner, repo
     raise ValueError("Could not determine GitHub repo from git remote origin")
 
 
