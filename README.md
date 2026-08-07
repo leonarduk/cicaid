@@ -12,20 +12,27 @@ truth, installed as a dependency by every consuming repo instead of vendored in-
 
 ## Install
 
+Each push of a `vX.Y.Z` tag builds a wheel and attaches it to a
+[GitHub Release](https://github.com/leonarduk/cicaid/releases). Install a specific
+release directly from its asset URL — pin the version explicitly for reproducible
+installs, the same as any other pinned dependency:
+
 ```bash
-pip install "cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git"
+pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.1.0/cicaid_devtools-0.1.0-py3-none-any.whl"
 ```
 
-Pin to a commit/tag for reproducible installs:
+Check the [Releases page](https://github.com/leonarduk/cicaid/releases) for the
+latest version and its exact asset URL. Optional extras work the same way:
+
+```bash
+pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/releases/download/v0.1.0/cicaid_devtools-0.1.0-py3-none-any.whl"
+```
+
+For tracking an unreleased commit (e.g. testing a fix before it's tagged), install
+straight from git instead:
 
 ```bash
 pip install "cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@<ref>"
-```
-
-Optional extras:
-
-```bash
-pip install "cicaid-devtools[dotenv] @ git+https://github.com/leonarduk/cicaid.git"
 ```
 
 `dotenv` enables loading `DEEPSEEK_API_KEY` and similar secrets from a repo-root
@@ -89,6 +96,18 @@ src/cicaid_devtools/
 pip install -e ".[test]"
 pytest
 ```
+
+## Releasing
+
+Bump `version` in `pyproject.toml`, then push a matching tag:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The [release workflow](.github/workflows/release.yml) builds the sdist/wheel and
+publishes them as assets on a new GitHub Release automatically.
 
 ## Related issues
 
