@@ -38,6 +38,39 @@ def get_repo_info() -> tuple[str, str]:
     raise ValueError("Could not determine GitHub repo from git remote origin")
 
 
+def get_actual_repo_name() -> str:
+    """Return the repo name from git remote, keeping any ``.wiki`` suffix.
+
+    Unlike :func:`get_repo_info`, this does *not* strip ``.wiki`` so that
+    callers can target the current (possibly wiki) repository for branch
+    and PR operations.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(f"Could not determine repo from remote: {exc}") from exc
+
+    match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$", result.stdout.strip())
+    if match:
+        return match.group(2)
+    raise ValueError("Could not determine repo from git remote origin")
+
+
+def is_wiki_repo() -> bool:
+    """Return ``True`` when the current checkout is a ``.wiki`` repository.
+
+    Raises ``ValueError`` when the current directory is not a GitHub git
+    checkout (e.g. no remote origin, or the URL doesn't match GitHub).
+    """
+    return get_actual_repo_name().endswith(".wiki")
+
+
 def get_repo_root() -> str:
     """Return the absolute path to the current git repository's root."""
     try:

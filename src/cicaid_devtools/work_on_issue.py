@@ -9,16 +9,16 @@ import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
-from github_repo import get_repo_info  # noqa: E402
+from github_repo import get_repo_info, is_wiki_repo  # noqa: E402
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
 
 def slugify(text: str) -> str:
     """Convert text to a URL-friendly slug.
@@ -135,16 +135,52 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Get repo info
+    token = args.token or os.getenv("GITHUB_TOKEN")
+
+    # Issue lookups always go to the non-wiki repo.
     try:
-        owner, repo = get_repo_info()
+        issue_owner, issue_repo = get_repo_info()
     except ValueError as exc:
         logger.error("Error: %s", exc)
         sys.exit(1)
 
-    logger.info("Using repository: %s/%s", owner, repo)
+    logger.info("Issue from: %s/%s", issue_owner, issue_repo)
 
-    # Fetch latest refs before resolving SHAs
+    # Fetch issue from the main (non-wiki) repo
+    logger.info("Fetching issue #%d...", args.issue_id)
+    issue = fetch_issue(issue_owner, issue_repo, args.issue_id, token)
+    title = issue.get("title", "")
+    body = issue.get("body") or ""
+    if not title:
+        logger.error("Error: Issue #%d has no title", args.issue_id)
+        sys.exit(1)
+
+    # Wiki repos don't support branches or PRs on GitHub -- work on the
+    # default branch and push when done (wikis update immediately).
+    try:
+        _wiki = is_wiki_repo()
+    except ValueError:
+        _wiki = False
+    if _wiki:
+        logger.info(
+            "Wiki repo detected -- edit files directly on the default "
+            "branch and push when done (wikis update immediately)."
+        )
+        issue_file = Path(f".issue-{args.issue_id}.md")
+        issue_file.write_text(f"{title}\n\n{body}\n", encoding="utf-8")
+        logger.info("Wrote issue to %s", issue_file)
+        logger.info(
+            "\n[OK] Issue #%d loaded. Edit on the default branch and push.",
+            args.issue_id,
+        )
+        return
+
+    # Create branch name
+    slug = slugify(title)
+    branch_name = f"{args.type}/issue-{args.issue_id}-{slug}"
+    logger.info("Branch name: %s", branch_name)
+
+    # Ensure we have the latest from origin and are on a stable base
     logger.info("Fetching from origin...")
     try:
         subprocess.run(["git", "fetch", "origin"], check=True)
@@ -152,60 +188,87 @@ def main() -> None:
         logger.error("Failed to fetch from origin: %s", exc)
         sys.exit(1)
 
-    token = args.token or os.getenv("GITHUB_TOKEN")
-
-    # Fetch issue
-    logger.info("Fetching issue #%d...", args.issue_id)
-    issue = fetch_issue(owner, repo, args.issue_id, token)
-    title = issue.get("title", "")
-    body = issue.get("body") or ""
-    if not title:
-        logger.error("Error: Issue #%d has no title", args.issue_id)
-        sys.exit(1)
-
-    # Create branch name
-    slug = slugify(title)
-    branch_name = f"{args.type}/issue-{args.issue_id}-{slug}"
-    logger.info("Branch name: %s", branch_name)
-
-    # Get the current main/master branch SHA
-    logger.info("Getting main branch SHA...")
-    sha = get_main_branch_sha(owner, repo)
-
-    # Create branch in remote
-    logger.info("Creating branch in remote...")
-    create_branch(owner, repo, branch_name, sha, token)
-
-    # Small delay to avoid a race where the branch ref isn't visible yet
-    time.sleep(1)
-
-    # Fetch the newly created branch so the local checkout can reference it
+    # Check if branch already exists locally or remotely
     try:
-        subprocess.run(["git", "fetch", "origin", branch_name], check=True, capture_output=True)
-    except subprocess.CalledProcessError:
-        # Fallback: fetch all refs if specific branch fetch fails
-        subprocess.run(["git", "fetch", "origin"], check=True)
-
-    # Checkout the new branch (create local tracking branch if needed)
-    try:
-        logger.info("Checking out %s...", branch_name)
-        subprocess.run(
-            ["git", "checkout", "-b", branch_name, f"origin/{branch_name}"],
-            check=True,
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", branch_name],
             capture_output=True,
+            check=False,
         )
-    except subprocess.CalledProcessError:
-        # Branch might already exist locally; try simple checkout
+        local_exists = result.returncode == 0
+    except Exception:
+        local_exists = False
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", f"origin/{branch_name}"],
+            capture_output=True,
+            check=False,
+        )
+        remote_exists = result.returncode == 0
+    except Exception:
+        remote_exists = False
+
+    if remote_exists:
+        logger.info("Branch %s already exists on remote", branch_name)
+        subprocess.run(
+            ["git", "fetch", "origin", branch_name], check=True, capture_output=True
+        )
+    elif local_exists:
+        logger.info("Branch %s exists locally; pushing to remote", branch_name)
+        subprocess.run(["git", "checkout", branch_name], check=True)
         try:
-            subprocess.run(["git", "checkout", branch_name], check=True)
+            subprocess.run(["git", "push", "-u", "origin", branch_name], check=True)
         except subprocess.CalledProcessError as exc:
-            logger.error("Failed to checkout branch: %s", exc)
+            logger.error("Failed to push branch: %s", exc)
+            sys.exit(1)
+    else:
+        logger.info("Creating branch...")
+        base_ref = None
+        for candidate in ("origin/main", "origin/master"):
+            try:
+                subprocess.run(
+                    ["git", "rev-parse", "--verify", candidate],
+                    capture_output=True,
+                    check=True,
+                )
+                base_ref = candidate
+                break
+            except subprocess.CalledProcessError:
+                continue
+
+        if base_ref is None:
+            logger.error("Could not find origin/main or origin/master")
             sys.exit(1)
 
-    # Write issue to markdown file (preserve original content without reformatting)
+        subprocess.run(
+            ["git", "checkout", "-b", branch_name, base_ref],
+            check=True,
+        )
+        logger.info("Pushing branch to remote...")
+        try:
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch_name],
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.error("Failed to push branch: %s", exc)
+            sys.exit(1)
+
+    # Checkout the branch if not already on it
+    try:
+        current = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, encoding="utf-8", check=True,
+        )
+        if current.stdout.strip() != branch_name:
+            subprocess.run(["git", "checkout", branch_name], check=True)
+    except subprocess.CalledProcessError:
+        pass
+
+    # Write issue to markdown file
     issue_file = Path(f".issue-{args.issue_id}.md")
-    content = f"{title}\n\n{body}\n"
-    issue_file.write_text(content, encoding="utf-8")
+    issue_file.write_text(f"{title}\n\n{body}\n", encoding="utf-8")
     logger.info("Wrote issue to %s", issue_file)
     logger.info("\n[OK] Ready to work on issue #%d", args.issue_id)
 
