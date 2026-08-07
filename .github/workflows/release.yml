@@ -43,17 +43,18 @@ jobs:
           # Push to a temp branch and merge via PR (works with branch protection)
           BRANCH="readme-bump-${GITHUB_REF_NAME#v}"
           git checkout -b "$BRANCH"
-          git push origin "$BRANCH"
+          git push --force origin "$BRANCH"
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base main \
             --head "$BRANCH" \
             --title "Update README install commands to ${{ github.ref_name }}" \
-            --body "Automated version bump triggered by [${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})."
+            --body "Automated version bump triggered by release ${{ github.ref_name }}.")
+          echo "Created $PR_URL"
 
-          if ! gh pr merge "$BRANCH" --merge; then
+          if ! gh pr merge "$PR_URL" --merge; then
             echo "::warning::Could not auto-merge the README PR."
-            echo "::warning::A PR was created — merge it manually to update the README."
+            echo "::warning::See $PR_URL — merge it manually to update the README."
           fi
 
       - name: Create GitHub Release
