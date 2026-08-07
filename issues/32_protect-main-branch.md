@@ -29,7 +29,7 @@ Applied via `gh api` using the configuration in `.github/branch-protection.json`
 
 ## Verification
 
-- **CI:** `.github/workflows/branch-protection-audit.yml` runs weekly and on config changes to verify rules haven't drifted.
+- **CI:** `.github/workflows/branch-protection-audit.yml` runs weekly and on config changes to verify rules haven't drifted. This requires a `gh_token` repository secret holding a PAT from a user with admin/owner rights on the repo — the branch protection GET endpoint has no permission scope grantable to the default `GITHUB_TOKEN`. Until that secret is added, the workflow logs a warning and skips (non-blocking) rather than failing every run.
 - **CLI:** `./scripts/apply-branch-protection.sh --verify` checks the live rules against `.github/branch-protection.json`.
 - **Manual:** `./scripts/apply-branch-protection.sh` (re-)applies rules and verifies them.
 
