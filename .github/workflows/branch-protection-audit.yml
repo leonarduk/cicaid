@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/branch-protection.json'
       - '.github/workflows/branch-protection-audit.yml'
+      - 'scripts/apply-branch-protection.sh'
 
 permissions:
   contents: read

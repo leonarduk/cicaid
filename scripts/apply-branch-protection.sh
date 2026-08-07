@@ -22,7 +22,7 @@ apply() {
   if ! gh api -X PUT "repos/$repo/branches/$BRANCH/protection" \
     --input "$CONFIG_FILE" \
     --jq '"  enforce_admins: \(.enforce_admins.enabled)"'; then
-    echo "ERROR: Failed to apply branch protection to '$repo'. This requires a token with admin rights on the repo (gh CLI must be authenticated with 'repo' scope as an admin)." >&2
+    echo "ERROR: Failed to apply branch protection to '$repo'. The 'repo' scope alone is not enough — gh CLI must be authenticated as a user with admin/owner permissions on this repository." >&2
     exit 1
   fi
   echo "  ✓ Applied successfully"
