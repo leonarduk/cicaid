@@ -52,6 +52,7 @@ inside `cicaid` itself.
 | `dependabot-auto-merge` | `scripts/developer_tools/m_dependabot_auto_merge.py` | Auto-merge green Dependabot PRs |
 | `review-issue` | `scripts/developer_tools/o_review_issue.py` | Refresh a stale issue with an LLM |
 | `add-issue-to-pr` | `scripts/developer_tools/p_add_issue_to_pr.py` | Link an issue to its PR |
+| `clear-ai-slop-issues` | `scripts/developer_tools/q_clear_ai_slop_issues.py` | Detect and close duplicate/stale/AI-slop issues |
 | `commit-and-push` | `scripts/developer_tools/lib/commit_and_push.py` | Commit with an LLM-drafted message and push |
 | `publish-pr` | `scripts/developer_tools/lib/publish_pr.py` | Publish a PR from the current branch |
 
@@ -76,7 +77,7 @@ other consumer repos will want their own check list until that becomes configura
 
 ```
 src/cicaid_devtools/
-  a_sync_issues.py ... p_add_issue_to_pr.py   # the a_/b_/c_/.../p_ CLI chain
+  a_sync_issues.py ... q_clear_ai_slop_issues.py   # the a_/b_/c_/.../q_ CLI chain
   lib/                                        # shared helpers (github_repo, llm_common,
                                                # ollama_common, remote_openai_common,
                                                # deepseek_review, review_common, ...)

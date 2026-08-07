@@ -33,6 +33,7 @@ pr-review = "cicaid_devtools.l_pr_review:main"
 dependabot-auto-merge = "cicaid_devtools.m_dependabot_auto_merge:main"
 review-issue = "cicaid_devtools.o_review_issue:main"
 add-issue-to-pr = "cicaid_devtools.p_add_issue_to_pr:main"
+clear-ai-slop-issues = "cicaid_devtools.q_clear_ai_slop_issues:main"
 commit-and-push = "cicaid_devtools.lib.commit_and_push:main"
 publish-pr = "cicaid_devtools.lib.publish_pr:main"
 

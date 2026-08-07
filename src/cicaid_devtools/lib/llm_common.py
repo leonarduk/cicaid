@@ -13,13 +13,16 @@ message generation) can offer the same choice without re-implementing it
 
 from __future__ import annotations
 
-import os
-import sys
-from pathlib import Path
+import logging
 
-# deepseek_review and ollama_common are siblings in this same lib/ dir. Every
-# caller of this module already puts lib/ on sys.path before importing it
-# (see the top-level scripts), so no path insertion is needed here.
+logger = logging.getLogger(__name__)
+
+import os
+
+# deepseek_review, ollama_common, and remote_openai_common are siblings in this
+# same lib/ dir. Every caller of this module already puts lib/ on sys.path
+# before importing it (see the top-level scripts), so no path insertion is
+# needed here.
 from deepseek_review import fetch_deepseek_review  # noqa: E402
 from ollama_common import (  # noqa: E402
     fetch_ollama_review,
@@ -83,16 +86,15 @@ def describe_model_source(model_source: str) -> str:
 def validate_model_source(model_source: str) -> bool:
     """Return True if the chosen model source is actually usable right now.
 
-    Prints an actionable error to stderr and returns False otherwise, so
-    callers can bail out with a single `if not validate_model_source(...)`.
+    Logs an actionable error and returns False otherwise, so callers can bail
+    out with a single `if not validate_model_source(...)`.
     """
     if model_source == LOCAL:
         endpoint = get_ollama_endpoint()
         if not validate_ollama_connection(endpoint):
-            print(
-                f"ERROR: Ollama is not reachable at {endpoint}. "
-                "Start Ollama or set OLLAMA_ENDPOINT.",
-                file=sys.stderr,
+            logger.error(
+                "Ollama is not reachable at %s. Start Ollama or set OLLAMA_ENDPOINT.",
+                endpoint,
             )
             return False
         return True
@@ -100,19 +102,12 @@ def validate_model_source(model_source: str) -> bool:
     if model_source == REMOTE:
         endpoint = get_remote_llm_endpoint()
         if not endpoint:
-            print(
-                "ERROR: REMOTE_LLM_ENDPOINT is not set; "
-                "cannot use the remote model.",
-                file=sys.stderr,
-            )
+            logger.error("REMOTE_LLM_ENDPOINT is not set; cannot use the remote model.")
             return False
         return True
 
     if not os.environ.get("DEEPSEEK_API_KEY"):
-        print(
-            "ERROR: DEEPSEEK_API_KEY is not set; cannot use the cloud model.",
-            file=sys.stderr,
-        )
+        logger.error("DEEPSEEK_API_KEY is not set; cannot use the cloud model.")
         return False
     return True
 
