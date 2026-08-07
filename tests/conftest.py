@@ -2,7 +2,7 @@
 
 The lib/ modules import each other with bare names (e.g. llm_common.py does
 `from deepseek_review import ...`), relying on whichever top-level script
-imports them having first put lib/ on sys.path (see e.g. o_review_issue.py).
+imports them having first put lib/ on sys.path (see e.g. review_issue.py).
 Tests that import lib modules directly need that same sys.path entry.
 """
 

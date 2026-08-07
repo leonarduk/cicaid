@@ -88,7 +88,7 @@ them into a consuming repo — they aren't part of the installed package.
 target repo's root (see `templates/allotmint-mcp.cicaid-checks.toml` for a
 Maven/Java example), so it runs whatever *that* repo's own CI actually does. A
 repo without a config file falls back to `DEFAULT_CHECKS` in
-[`h_run_ci_checks.py`](src/cicaid_devtools/h_run_ci_checks.py) (allotmint's own
+[`h_run_ci_checks.py`](src/cicaid_devtools/run_ci_checks.py) (allotmint's own
 Python/npm/CDK checks — only correct for allotmint itself). Format:
 
 ```toml

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from cicaid_devtools.h_run_ci_checks import _parse_config
+from cicaid_devtools.run_ci_checks import _parse_config
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 

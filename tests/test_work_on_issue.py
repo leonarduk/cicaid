@@ -1,4 +1,4 @@
-from cicaid_devtools.d_work_on_issue import slugify
+from cicaid_devtools.work_on_issue import slugify
 
 
 def test_slugify_normal_title():
