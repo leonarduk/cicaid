@@ -37,6 +37,12 @@ PROVIDER_OUTAGE_MARKER = "**REVIEW SKIPPED - PROVIDER OUTAGE**"
 # not a blocking verdict, since an empty provider response is a provider/config
 # issue rather than a code-review finding.
 EMPTY_REVIEW_MARKER = "**REVIEW SKIPPED - EMPTY PROVIDER RESPONSE**"
+# Sentinel embedded in the review body when the provider's API key secret is not
+# configured in the repository. extract_verdict.py looks for this marker so the
+# workflow treats it as a skipped check (exit 2 / soft-fail) rather than a
+# blocking "REQUEST CHANGES" verdict — a missing secret is a repo-config issue,
+# not a code-review finding.
+API_KEY_MISSING_MARKER = "**REVIEW SKIPPED - API KEY NOT CONFIGURED**"
 TRUNCATION_NOTICE_TEMPLATE = (
     "\n\n[diff truncated after {kept_files} file(s); skipped {skipped_files} additional file(s) "
     "to stay within the 120k-character review budget while preserving whole-file diff blocks]"
@@ -67,12 +73,14 @@ def get_required_env(name: str) -> str:
 def load_review_context(api_key_env: str) -> ReviewContext:
     """Load the workflow inputs expected by the review scripts from environment variables.
 
-    The workflows pass PR metadata through `PR_TITLE`, `DIFF`, and `ISSUE_BODY`, while the
-    provider-specific secret must be present in `api_key_env`.
+    The workflows pass PR metadata through `PR_TITLE`, `DIFF`, and `ISSUE_BODY`.
+    The provider-specific secret ``api_key_env`` is read but not required here —
+    callers should check ``context.api_key`` and emit a skip notice when it is
+    empty so the workflow doesn't hard-fail over a missing repo secret.
     """
 
     return ReviewContext(
-        api_key=get_required_env(api_key_env),
+        api_key=os.environ.get(api_key_env, ""),
         pr_title=os.environ.get("PR_TITLE", ""),
         diff=os.environ.get("DIFF", ""),
         issue_body=os.environ.get("ISSUE_BODY", DEFAULT_ISSUE_BODY),
@@ -201,6 +209,28 @@ def emit_outage_notice(provider_name: str, detail: str) -> int:
         f"attempts: {detail}\n\nThis looks like a transient provider outage rather "
         "than a code issue; re-run the check once the provider recovers.\n\n"
         f"{PROVIDER_OUTAGE_MARKER}"
+    )
+    return 0
+
+
+def emit_missing_key_notice(provider_name: str, key_env: str) -> int:
+    """Print a notice that the API key secret is not configured and return success.
+
+    Unlike other skip conditions, a missing API key is a repo-configuration gap,
+    not a transient provider issue.  The message names the exact secret to add
+    so the repo admin can fix it without reading code.
+    """
+    print(
+        f"## {provider_name} AI Code Review — Skipped: API key not configured\n\n"
+        f"The `{key_env}` repository secret is not set.\n\n"
+        f"**To enable {provider_name} reviews**, add `{key_env}` as a repository secret:\n"
+        f"1. Go to **Settings → Secrets and variables → Actions** in this repo.\n"
+        f"2. Click **New repository secret**.\n"
+        f"3. Name: `{key_env}`\n"
+        f"4. Value: your {provider_name} API key.\n\n"
+        f"Once the secret is configured, re-run this workflow or push a new commit "
+        f"to trigger a fresh review.\n\n"
+        f"{API_KEY_MISSING_MARKER}"
     )
     return 0
 

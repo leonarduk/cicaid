@@ -20,6 +20,7 @@ from review_common import (
     ProviderOutageError,
     build_prompt,
     emit_empty_diff_notice,
+    emit_missing_key_notice,
     emit_outage_notice,
     fetch_review,
     finalize_review,
@@ -131,6 +132,8 @@ def fetch_deepseek_review(api_key: str, prompt: str) -> str:
 def main() -> int:
     """Run the advisory DeepSeek review flow."""
     context = load_review_context("DEEPSEEK_API_KEY")
+    if not context.api_key:
+        return emit_missing_key_notice("DeepSeek", "DEEPSEEK_API_KEY")
     if not context.diff.strip():
         return emit_empty_diff_notice("DeepSeek")
 
