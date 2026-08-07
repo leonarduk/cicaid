@@ -90,7 +90,11 @@ def main() -> None:
 
     # Wiki repos don't support branches or PRs on GitHub -- work on the
     # default branch and push when done (wikis update immediately).
-    if is_wiki_repo():
+    try:
+        _wiki = is_wiki_repo()
+    except ValueError:
+        _wiki = False
+    if _wiki:
         logger.info(
             "Wiki repo detected -- edit files directly on the default "
             "branch and push when done (wikis update immediately)."
@@ -146,7 +150,11 @@ def main() -> None:
     elif local_exists:
         logger.info("Branch %s exists locally; pushing to remote", branch_name)
         subprocess.run(["git", "checkout", branch_name], check=True)
-        subprocess.run(["git", "push", "-u", "origin", branch_name], check=True)
+        try:
+            subprocess.run(["git", "push", "-u", "origin", branch_name], check=True)
+        except subprocess.CalledProcessError as exc:
+            logger.error("Failed to push branch: %s", exc)
+            sys.exit(1)
     else:
         logger.info("Creating branch...")
         base_ref = None
@@ -171,10 +179,14 @@ def main() -> None:
             check=True,
         )
         logger.info("Pushing branch to remote...")
-        subprocess.run(
-            ["git", "push", "-u", "origin", branch_name],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch_name],
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.error("Failed to push branch: %s", exc)
+            sys.exit(1)
 
     # Checkout the branch if not already on it
     try:

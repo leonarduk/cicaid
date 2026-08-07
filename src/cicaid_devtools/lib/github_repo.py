@@ -63,11 +63,12 @@ def get_actual_repo_name() -> str:
 
 
 def is_wiki_repo() -> bool:
-    """Return ``True`` when the current checkout is a ``.wiki`` repository."""
-    try:
-        return get_actual_repo_name().endswith(".wiki")
-    except ValueError:
-        return False
+    """Return ``True`` when the current checkout is a ``.wiki`` repository.
+
+    Raises ``ValueError`` when the current directory is not a GitHub git
+    checkout (e.g. no remote origin, or the URL doesn't match GitHub).
+    """
+    return get_actual_repo_name().endswith(".wiki")
 
 
 def get_repo_root() -> str:
