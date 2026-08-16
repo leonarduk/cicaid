@@ -7,83 +7,21 @@ import yaml
 
 from cicaid_devtools import setup_review_actions as sra
 
-# ──────────────────────── get_latest_cicaid_install_spec ───────────────────
+# ──────────────────────── get_cicaid_core_install_spec ──────────────────────
 
 
-@pytest.fixture(autouse=True)
-def clear_latest_install_spec_cache():
-    sra._get_latest_cicaid_release_install_spec.cache_clear()
-    yield
-    sra._get_latest_cicaid_release_install_spec.cache_clear()
+def test_get_cicaid_core_install_spec_uses_pinned_ref():
+    spec = sra.get_cicaid_core_install_spec()
+
+    assert spec == (
+        f"cicaid-devtools @ git+https://github.com/leonarduk/cicaid-core.git@{sra.CICAID_CORE_REF}"
+    )
 
 
-def test_get_latest_install_spec_uses_release_wheel_url():
-    with patch.object(sra.requests, "get") as mock_get:
-        mock_get.return_value = MagicMock(status_code=200)
-        mock_get.return_value.raise_for_status = MagicMock()
-        mock_get.return_value.json.return_value = {"tag_name": "v0.5.2"}
+def test_get_cicaid_core_install_spec_accepts_ref_override():
+    spec = sra.get_cicaid_core_install_spec(ref="v1.2.3")
 
-        spec = sra.get_latest_cicaid_install_spec()
-
-        assert spec == (
-            "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/"
-            "download/v0.5.2/cicaid_devtools-0.5.2-py3-none-any.whl"
-        )
-
-
-def test_get_latest_install_spec_caches_successful_lookup():
-    with patch.object(sra.requests, "get") as mock_get:
-        mock_get.return_value = MagicMock(status_code=200)
-        mock_get.return_value.raise_for_status = MagicMock()
-        mock_get.return_value.json.return_value = {"tag_name": "v0.5.2"}
-
-        first_spec = sra.get_latest_cicaid_install_spec()
-        second_spec = sra.get_latest_cicaid_install_spec()
-
-        assert second_spec == first_spec
-        mock_get.assert_called_once_with(
-            "https://api.github.com/repos/leonarduk/cicaid/releases/latest", timeout=10
-        )
-
-
-def test_get_latest_install_spec_does_not_cache_failure():
-    successful_response = MagicMock()
-    successful_response.json.return_value = {"tag_name": "v0.5.2"}
-    with patch.object(sra.requests, "get") as mock_get:
-        mock_get.side_effect = [
-            sra.requests.ConnectionError("network down"),
-            successful_response,
-        ]
-
-        fallback_spec = sra.get_latest_cicaid_install_spec()
-        release_spec = sra.get_latest_cicaid_install_spec()
-
-        assert fallback_spec.endswith(".git@main")
-        assert release_spec.endswith("cicaid_devtools-0.5.2-py3-none-any.whl")
-        assert mock_get.call_count == 2
-
-
-def test_get_latest_install_spec_falls_back_to_main_on_request_error(caplog):
-    import requests as req
-
-    with patch.object(sra.requests, "get") as mock_get:
-        mock_get.side_effect = req.ConnectionError("network down")
-
-        spec = sra.get_latest_cicaid_install_spec()
-
-        assert spec == "cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@main"
-        assert "Could not resolve latest cicaid-devtools release" in caplog.text
-
-
-def test_get_latest_install_spec_falls_back_when_tag_name_missing():
-    with patch.object(sra.requests, "get") as mock_get:
-        mock_get.return_value = MagicMock(status_code=200)
-        mock_get.return_value.raise_for_status = MagicMock()
-        mock_get.return_value.json.return_value = {}
-
-        spec = sra.get_latest_cicaid_install_spec()
-
-        assert spec == "cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@main"
+    assert spec == "cicaid-devtools @ git+https://github.com/leonarduk/cicaid-core.git@v1.2.3"
 
 
 # ───────────────────────── prompt_yes_no / prompt_text ──────────────────────
@@ -246,6 +184,7 @@ def test_render_workflows_includes_reusable_provider_and_extras_by_default():
 
     assert set(files) == {
         ".github/workflows/_ai-pr-review.yml",
+        ".github/scripts/pip_install_cicaid_core.sh",
         ".github/workflows/deepseek-pr-review.yml",
         ".github/workflows/gpt-pr-review.yml",
         ".github/workflows/dependency-review.yml",
@@ -262,8 +201,27 @@ def test_render_workflows_substitutes_install_spec():
     files = sra.render_workflows("cicaid-devtools @ some-url", ["deepseek"])
 
     reusable = files[".github/workflows/_ai-pr-review.yml"]
-    assert 'pip install "cicaid-devtools @ some-url"' in reusable
+    assert 'pip_install_cicaid_core.sh pip install --retries 10 "cicaid-devtools @ some-url"' in reusable
     assert sra.INSTALL_SPEC_PLACEHOLDER not in reusable
+
+
+def test_render_workflows_includes_cicaid_core_install_script():
+    files = sra.render_workflows("cicaid-devtools @ some-url", ["deepseek"])
+
+    script = files[".github/scripts/pip_install_cicaid_core.sh"]
+    assert "CICAID_CORE_TOKEN" in script
+    assert "leonarduk/cicaid-core" in script
+
+
+def test_render_workflows_threads_cicaid_core_token_secret():
+    files = sra.render_workflows("cicaid-devtools @ some-url", ["deepseek", "gpt"])
+
+    reusable = files[".github/workflows/_ai-pr-review.yml"]
+    assert "cicaid_core_token:" in reusable
+
+    for provider in ("deepseek", "gpt"):
+        caller = files[f".github/workflows/{provider}-pr-review.yml"]
+        assert "cicaid_core_token: ${{ secrets.CICAID_CORE_TOKEN }}" in caller
 
 
 def test_render_workflows_linked_issue_extraction_drops_refs():
@@ -699,7 +657,7 @@ def test_main_returns_early_when_nothing_changed(monkeypatch, tmp_path):
     monkeypatch.setattr(sra, "check_gh_available", lambda: None)
     monkeypatch.setattr(sra, "check_working_tree_clean", lambda: True)
     monkeypatch.setattr(sra, "get_default_branch", lambda owner, repo: "main")
-    monkeypatch.setattr(sra, "get_latest_cicaid_install_spec", lambda: "cicaid-devtools @ some-url")
+    monkeypatch.setattr(sra, "get_cicaid_core_install_spec", lambda: "cicaid-devtools @ some-url")
     monkeypatch.setattr(sra, "diff_against_default_branch", lambda files, default_branch: {})
 
     def fail_if_called(*_args, **_kwargs):
@@ -727,7 +685,7 @@ def _patch_repo_plumbing(monkeypatch, tmp_path):
     monkeypatch.setattr(sra, "check_gh_available", lambda: None)
     monkeypatch.setattr(sra, "check_working_tree_clean", lambda: True)
     monkeypatch.setattr(sra, "get_default_branch", lambda owner, repo: "main")
-    monkeypatch.setattr(sra, "get_latest_cicaid_install_spec", lambda: "cicaid-devtools @ some-url")
+    monkeypatch.setattr(sra, "get_cicaid_core_install_spec", lambda: "cicaid-devtools @ some-url")
     monkeypatch.setattr(
         sra, "diff_against_default_branch", lambda files, default_branch: dict(files)
     )
