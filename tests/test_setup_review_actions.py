@@ -899,40 +899,9 @@ def test_find_existing_tracking_issue_returns_none_on_gh_failure(caplog):
     assert "Could not search for an existing tracking issue" in caplog.text
 
 
-def test_link_issue_to_pr_posts_closes_link():
-    with patch.object(sra.requests, "post") as mock_post:
-        mock_post.return_value = MagicMock(status_code=201, text="")
-        ok = sra.link_issue_to_pr("owner", "repo", "23", "22", "token")
-
-    assert ok is True
-    mock_post.assert_called_once()
-    assert mock_post.call_args.args[0] == (
-        "https://api.github.com/repos/owner/repo/issues/23/links"
-    )
-    assert mock_post.call_args.kwargs["json"] == {
-        "issue_id": 22,
-        "relationship": "closes",
-    }
-    assert mock_post.call_args.kwargs["headers"]["Authorization"] == "token token"
-
-
-def test_link_issue_to_pr_non_fatal_on_api_failure(caplog):
-    caplog.set_level("WARNING")
-    with patch.object(sra.requests, "post") as mock_post:
-        mock_post.return_value = MagicMock(status_code=404, text="nope")
-        assert sra.link_issue_to_pr("owner", "repo", "23", "22", "token") is False
-    assert "Could not link PR 23 to issue #22" in caplog.text
-
-
-def test_link_issue_to_pr_skipped_without_token():
-    with patch.object(sra.requests, "post") as mock_post:
-        assert sra.link_issue_to_pr("owner", "repo", "23", "22", None) is False
-    mock_post.assert_not_called()
-
-
-def test_main_issue_flag_reuses_issue_closes_in_pr_and_links(monkeypatch, tmp_path):
+def test_main_issue_flag_reuses_issue_closes_in_pr(monkeypatch, tmp_path):
     """--no-issue --issue 22: no new issue, branch named after #22, PR body ends
-    with 'Closes #22', commit references #22, and the PR is formally linked.
+    with 'Closes #22', and commit references #22.
     """
     import sys
 
@@ -952,8 +921,6 @@ def test_main_issue_flag_reuses_issue_closes_in_pr_and_links(monkeypatch, tmp_pa
         return "https://github.com/owner/repo/pull/23"
 
     monkeypatch.setattr(sra, "create_pr", fake_create_pr)
-    linked = MagicMock(return_value=True)
-    monkeypatch.setattr(sra, "link_issue_to_pr", linked)
 
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("issue creation must be skipped when --issue is passed")
@@ -977,7 +944,6 @@ def test_main_issue_flag_reuses_issue_closes_in_pr_and_links(monkeypatch, tmp_pa
     assert captured_pr["branch"] == "chore/issue-22-setup-review-actions"
     assert captured_pr["body"].endswith("Closes #22")
     assert commit_messages and "Refs #22" in commit_messages[0]
-    linked.assert_called_once_with("owner", "repo", "23", "22", "token")
 
 
 def test_main_no_issue_auto_reuses_existing_tracking_issue(monkeypatch, tmp_path):
@@ -1000,7 +966,6 @@ def test_main_no_issue_auto_reuses_existing_tracking_issue(monkeypatch, tmp_path
         return "https://github.com/owner/repo/pull/23"
 
     monkeypatch.setattr(sra, "create_pr", fake_create_pr)
-    monkeypatch.setattr(sra, "link_issue_to_pr", lambda *a, **k: True)
 
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("issue creation must be skipped when --no-issue is passed")
@@ -1039,7 +1004,6 @@ def test_main_default_path_reuses_existing_tracking_issue(monkeypatch, tmp_path)
         return "https://github.com/owner/repo/pull/23"
 
     monkeypatch.setattr(sra, "create_pr", fake_create_pr)
-    monkeypatch.setattr(sra, "link_issue_to_pr", lambda *a, **k: True)
 
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("issue creation must be skipped when a tracker is reused")
