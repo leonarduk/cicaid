@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cicaid-devtools"
+dynamic = ["version"]
+description = "GitHub issue/PR plumbing CLI (free shell) - the LLM review/triage engine is cicaid-core"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "packaging>=24,<27",
+    "python-dotenv>=1.0,<2",
+    "requests>=2.34.2,<3",
+]
+
+[project.optional-dependencies]
+# Kept as a compatibility alias for existing ``cicaid-devtools[dotenv]``
+# installation commands. dotenv is now installed by default so local commands
+# can reliably load repository credentials without a special extra.
+dotenv = [
+]
+test = [
+    "pytest~=9.0.3",
+    "pytest-cov~=7.1.0",
+    "pyyaml>=6.0,<7",
+]
+
+[project.scripts]
+cicaid = "cicaid_devtools.cli:main"
+sync-issues = "cicaid_devtools.sync_issues:main"
+work-on-issue = "cicaid_devtools.work_on_issue:main"
+update-issue = "cicaid_devtools.update_issue:main"
+work-on-pr = "cicaid_devtools.work_on_pr:main"
+run-ci-checks = "cicaid_devtools.run_ci_checks:main"
+dependabot-auto-merge = "cicaid_devtools.dependabot_auto_merge:main"
+setup-review-actions = "cicaid_devtools.setup_review_actions:main"
+add-issue-to-pr = "cicaid_devtools.add_issue_to_pr:main"
+publish-pr = "cicaid_devtools.lib.publish_pr:main"
+
+[tool.setuptools_scm]
+fallback_version = "0.1.0"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/cicaid_devtools/setup_review_actions.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
