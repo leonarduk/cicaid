@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -199,14 +200,39 @@ def push_to_remote(branch: str) -> bool:
 
 
 def fetch_issue(owner: str, repo: str, issue_id: int) -> Optional[dict]:
-    """Fetch issue details from GitHub API."""
-    url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_id}"
+    """Fetch issue details via the authenticated `gh` CLI.
+
+    Uses `gh api` (which reuses `gh`'s stored auth) rather than an
+    unauthenticated HTTP request, so issues in private repos can be read.
+    GitHub's REST API returns 404 -- not 403 -- for issues the caller lacks
+    access to, so on a 404 the error is worded to cover both "doesn't exist"
+    and "not accessible with the current `gh` auth" rather than implying
+    the issue is definitely missing.
+    """
+    result = subprocess.run(
+        ["gh", "api", f"repos/{owner}/{repo}/issues/{issue_id}"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if "404" in stderr:
+            logger.error(
+                f"Failed to fetch issue #{issue_id}: not found, or not accessible "
+                f"with the current `gh` auth. If {owner}/{repo} is private, run "
+                f"`gh auth status` to confirm the logged-in account has access. "
+                f"({stderr})"
+            )
+        else:
+            logger.error(f"Failed to fetch issue #{issue_id}: {stderr}")
+        return None
+
     try:
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
-    except requests.RequestException as exc:
-        logger.error(f"Failed to fetch issue #{issue_id}: {exc}")
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        logger.error(f"Failed to fetch issue #{issue_id}: invalid JSON from `gh api`: {exc}")
         return None
 
 

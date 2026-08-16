@@ -103,3 +103,46 @@ def test_placeholder_body_falls_back_to_comment_without_issue_body():
         assert "Closes #1" in body
         headings = [line for line in body.splitlines() if line.startswith("## ")]
         assert headings == ["## What", "## Why", "## Testing", "## Checklist"]
+
+
+def test_fetch_issue_uses_authenticated_gh_api():
+    """fetch_issue must go through `gh api` (authenticated) rather than an
+    unauthenticated HTTP request, so private repos are readable (issue #2)."""
+    with patch("cicaid_devtools.lib.publish_pr.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout='{"number": 328, "title": "T", "body": "B"}', stderr=""
+        )
+        issue = publish_pr.fetch_issue("leonarduk", "private-repo", 328)
+
+    mock_run.assert_called_once()
+    args = mock_run.call_args.args[0]
+    assert args == ["gh", "api", "repos/leonarduk/private-repo/issues/328"]
+    assert issue == {"number": 328, "title": "T", "body": "B"}
+
+
+def test_fetch_issue_404_error_mentions_private_repo_access(caplog):
+    """A 404 from `gh api` is worded as 'not found, or not accessible' since
+    GitHub returns 404 (not 403) for issues the caller lacks access to."""
+    with patch("cicaid_devtools.lib.publish_pr.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="gh: Not Found (HTTP 404)"
+        )
+        issue = publish_pr.fetch_issue("leonarduk", "private-repo", 328)
+
+    assert issue is None
+    assert "not found, or not accessible" in caplog.text
+    assert "gh auth status" in caplog.text
+
+
+def test_fetch_issue_non_404_error_is_reported_plainly(caplog):
+    """Non-404 `gh api` failures (e.g. network errors) skip the private-repo
+    wording and just surface gh's stderr."""
+    with patch("cicaid_devtools.lib.publish_pr.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="gh: connection refused"
+        )
+        issue = publish_pr.fetch_issue("leonarduk", "some-repo", 1)
+
+    assert issue is None
+    assert "connection refused" in caplog.text
+    assert "not accessible" not in caplog.text
