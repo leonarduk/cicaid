@@ -38,13 +38,16 @@ pytest
 
 ## High-signal warnings
 
-- **`cicaid` and `cicaid-pro` both install as the same package name
-  (`cicaid-devtools`) with the same `cicaid` entry point.** Installing both
-  into one environment has the second `pip install` silently overwrite the
-  first's files. If both repos are checked out as siblings (they are here —
-  `GitHub/cicaid/{cicaid,cicaid-pro}`), use cicaid-pro's venv switcher
-  (`cicaid-pro/scripts/use.ps1 free` / `use.ps1 pro`) instead of installing
-  both by hand.
+- **`cicaid-pro` depends on this package (`cicaid-devtools`) rather than
+  duplicating it** (issue #472): `cicaid_devtools` is a PEP 420 namespace
+  package (no `__init__.py`) so cicaid-pro's own LLM-backed modules merge
+  into the same `cicaid_devtools.*` namespace from a sibling checkout.
+  cicaid-pro installs as a separate distribution, `cicaid-devtools-pro`, so
+  the two no longer collide on distribution name or clobber each other's
+  files the way they used to. If both repos are checked out as siblings
+  (they are here — `GitHub/cicaid/{cicaid,cicaid-pro}`), set up cicaid-pro's
+  dev venv with `cicaid-pro/scripts/test_all.py`, or by hand: `pip install -e
+  ../cicaid` then `pip install -e ".[test]"` from inside `cicaid-pro/`.
 - No `version` field in `pyproject.toml` — version comes from
   `setuptools-scm` off the git tag at build time. Don't hand-edit a version.
 - The `README.md` install commands and latest-tag comment
