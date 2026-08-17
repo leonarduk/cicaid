@@ -9,8 +9,9 @@ Tests that import lib modules directly need that same sys.path entry.
 import sys
 from pathlib import Path
 
-import cicaid_devtools
-
-_LIB_DIR = Path(cicaid_devtools.__file__).parent / "lib"
+# cicaid_devtools is a PEP 420 namespace package (no __init__.py, so no
+# __file__) split across this repo and cicaid-pro's; derive the path to
+# *this* repo's own lib/ from this file's location instead of the package.
+_LIB_DIR = Path(__file__).resolve().parent.parent / "src" / "cicaid_devtools" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))

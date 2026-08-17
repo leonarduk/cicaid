@@ -52,14 +52,14 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # The review integrations these generated workflows import (review_diff,
 # review_comment, deepseek_review, gpt_review, verdict, followups, etc.) live
-# in cicaid-core, not in this (leonarduk/cicaid) "free shell" package -- see
-# https://github.com/leonarduk/cicaid-core. cicaid-core is private, so it has
+# in cicaid-pro, not in this (leonarduk/cicaid) "free shell" package -- see
+# https://github.com/leonarduk/cicaid-pro. cicaid-pro is private, so it has
 # no public releases API to query; the install is pinned to a fixed tag here
 # instead of resolved dynamically, and cloned over git+https using a
-# short-lived, request-scoped git credential (see PIP_INSTALL_CICAID_CORE_SCRIPT).
-CICAID_CORE_REPO = "leonarduk/cicaid-core"
-CICAID_CORE_REF = "v0.9.1"
-CICAID_CORE_TOKEN_SECRET = "CICAID_CORE_TOKEN"
+# short-lived, request-scoped git credential (see PIP_INSTALL_cicaid_pro_SCRIPT).
+CICAID_PRO_REPO = "leonarduk/cicaid-pro"
+CICAID_PRO_REF = "v0.9.1"
+CICAID_PRO_TOKEN_SECRET = "CICAID_PRO_TOKEN"
 DEFAULT_BRANCH_NAME = "chore/setup-review-actions"
 PROVIDERS = ("deepseek", "gpt")
 INSTALL_SPEC_PLACEHOLDER = "__CICAID_INSTALL_SPEC__"
@@ -112,8 +112,8 @@ on:
       gh_token:
         description: "Token used for gh CLI calls (PR/issue read and write)"
         required: true
-      cicaid_core_token:
-        description: "Fine-grained PAT (Contents: Read-only) scoped to leonarduk/cicaid-core, used to install cicaid-devtools since the review modules (review_diff, review_comment, deepseek_review, gpt_review, etc.) only exist in the private cicaid-core package"
+      cicaid_pro_token:
+        description: "Fine-grained PAT (Contents: Read-only) scoped to leonarduk/cicaid-pro, used to install cicaid-devtools-pro since the review modules (review_diff, review_comment, deepseek_review, gpt_review, etc.) only exist in that private package"
         required: true
 
 # github.workflow resolves to the *calling* workflow's name (DeepSeek/GPT PR
@@ -144,15 +144,15 @@ jobs:
 
       # The AI-review modules this workflow imports below (review_diff,
       # review_comment, deepseek_review, gpt_review, etc.) only exist in the
-      # private leonarduk/cicaid-core package, not this public "free shell"
+      # private leonarduk/cicaid-pro package, not this public "free shell"
       # repo -- installing from here either 404s or is missing these
-      # modules. pip_install_cicaid_core.sh validates the token up front and
+      # modules. pip_install_cicaid_pro.sh validates the token up front and
       # exposes the credential only to the pip process through GIT_CONFIG_*
       # variables.
-      - name: Install cicaid-devtools (PR review helpers)
+      - name: Install cicaid-devtools + cicaid-devtools-pro (PR review helpers)
         env:
-          CICAID_CORE_TOKEN: ${{ secrets.cicaid_core_token }}
-        run: bash .github/scripts/pip_install_cicaid_core.sh pip install --retries 10 "__CICAID_INSTALL_SPEC__"
+          CICAID_PRO_TOKEN: ${{ secrets.cicaid_pro_token }}
+        run: bash .github/scripts/pip_install_cicaid_pro.sh pip install --retries 10 __CICAID_INSTALL_SPEC__
 
       - name: Get linked issue body
         id: issue
@@ -389,7 +389,7 @@ jobs:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
       deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}
-      cicaid_core_token: ${{ secrets.CICAID_CORE_TOKEN }}
+      cicaid_pro_token: ${{ secrets.CICAID_PRO_TOKEN }}
 """,
     "gpt": """name: GPT PR Review
 
@@ -414,19 +414,19 @@ jobs:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
       deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}
-      cicaid_core_token: ${{ secrets.CICAID_CORE_TOKEN }}
+      cicaid_pro_token: ${{ secrets.CICAID_PRO_TOKEN }}
 """,
 }
 
-PIP_INSTALL_CICAID_CORE_SCRIPT = """#!/usr/bin/env bash
+PIP_INSTALL_CICAID_PRO_SCRIPT = """#!/usr/bin/env bash
 # Runs a command (typically a pip install) with git credentials configured so it
-# can clone the private leonarduk/cicaid-core repo. The AI-review modules the
+# can clone the private leonarduk/cicaid-pro repo. The AI-review modules the
 # generated workflows import (review_diff, review_comment, deepseek_review,
-# gpt_review, etc.) only exist in cicaid-core, not the public leonarduk/cicaid
+# gpt_review, etc.) only exist in cicaid-pro, not the public leonarduk/cicaid
 # "free shell" package, so a plain pip install of the public wheel/repo 404s
 # or is missing these modules.
 #
-# Fails fast with an actionable message if CICAID_CORE_TOKEN is unset or empty,
+# Fails fast with an actionable message if CICAID_PRO_TOKEN is unset or empty,
 # instead of letting the wrapped command fail later with a confusing git auth
 # error. The credential rewrite is scoped to exactly this invocation through
 # Git's GIT_CONFIG_* environment variables; the token is never written to a
@@ -447,18 +447,18 @@ PIP_INSTALL_CICAID_CORE_SCRIPT = """#!/usr/bin/env bash
 # contain the URL-reserved characters (@, :, /) that would make this rewrite
 # unsafe, so that's not a practical concern for the token this script expects.
 #
-# Usage: pip_install_cicaid_core.sh <command...>
-# Required env: CICAID_CORE_TOKEN
+# Usage: pip_install_cicaid_pro.sh <command...>
+# Required env: CICAID_PRO_TOKEN
 set -euo pipefail
 
-if [ -z "${CICAID_CORE_TOKEN:-}" ]; then
-  echo "::error::CICAID_CORE_TOKEN is empty or unset. Add a fine-grained PAT (Contents: Read-only, scoped to leonarduk/cicaid-core) as the CICAID_CORE_TOKEN repository secret (Settings > Secrets and variables > Actions) before this workflow can install cicaid-devtools." >&2
+if [ -z "${cicaid_pro_token:-}" ]; then
+  echo "::error::CICAID_PRO_TOKEN is empty or unset. Add a fine-grained PAT (Contents: Read-only, scoped to leonarduk/cicaid-pro) as the CICAID_PRO_TOKEN repository secret (Settings > Secrets and variables > Actions) before this workflow can install cicaid-devtools-pro." >&2
   exit 1
 fi
 
 export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0="url.https://x-access-token:${CICAID_CORE_TOKEN}@github.com/leonarduk/cicaid-core.insteadOf"
-export GIT_CONFIG_VALUE_0="https://github.com/leonarduk/cicaid-core"
+export GIT_CONFIG_KEY_0="url.https://x-access-token:${CICAID_PRO_TOKEN}@github.com/leonarduk/cicaid-pro.insteadOf"
+export GIT_CONFIG_VALUE_0="https://github.com/leonarduk/cicaid-pro"
 
 exec "$@"
 """
@@ -714,17 +714,22 @@ ISSUE_TEMPLATE_FILES = {
 SECRET_NAMES = {"deepseek": "DEEPSEEK_API_KEY", "gpt": "OPENAI_API_KEY"}
 
 
-def get_cicaid_core_install_spec(ref: str = CICAID_CORE_REF) -> str:
-    """Return the pip install spec for cicaid-devtools, pinned to a cicaid-core ref.
+def get_cicaid_pro_install_spec(ref: str = CICAID_PRO_REF) -> str:
+    """Return the pip install spec(s) for cicaid-devtools-pro, pinned to a cicaid-pro ref.
 
-    cicaid-core is private, so unlike this repo it has no public releases API
+    cicaid-pro depends on cicaid-devtools (this repo's own package) but isn't
+    published to any index pip can resolve that from automatically, so both
+    are installed explicitly here as two separate git+https specs in one
+    `pip install` call. cicaid-pro is private and has no public releases API
     to query for "latest" -- and even if it did, an unauthenticated lookup
     would 404. The generated workflow clones it over git+https using a
-    request-scoped credential (CICAID_CORE_TOKEN, injected by
-    pip_install_cicaid_core.sh), so the install spec here is just the git URL
-    pinned to a fixed, known-good tag rather than a resolved release asset.
+    request-scoped credential (CICAID_PRO_TOKEN, injected by
+    pip_install_cicaid_pro.sh); cicaid itself is public and needs none.
     """
-    return f"cicaid-devtools @ git+https://github.com/{CICAID_CORE_REPO}.git@{ref}"
+    return (
+        f'"cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@main" '
+        f'"cicaid-devtools-pro @ git+https://github.com/{CICAID_PRO_REPO}.git@{ref}"'
+    )
 
 
 def prompt_yes_no(question: str, default: bool) -> bool:
@@ -876,10 +881,10 @@ def render_workflows(
         ".github/workflows/_ai-pr-review.yml": REUSABLE_WORKFLOW_TEMPLATE.replace(
             INSTALL_SPEC_PLACEHOLDER, install_spec
         ),
-        # Required by the "Install cicaid-devtools" step above -- cicaid-core
+        # Required by the "Install cicaid-devtools + cicaid-devtools-pro" step above -- cicaid-pro
         # is private, so the install needs a scoped git credential injected
         # via this wrapper rather than a plain `pip install`.
-        ".github/scripts/pip_install_cicaid_core.sh": PIP_INSTALL_CICAID_CORE_SCRIPT,
+        ".github/scripts/pip_install_cicaid_pro.sh": PIP_INSTALL_CICAID_PRO_SCRIPT,
     }
     for provider in providers:
         files[f".github/workflows/{provider}-pr-review.yml"] = CALLER_WORKFLOW_TEMPLATES[provider]
@@ -1117,12 +1122,12 @@ def build_issue_body(providers: list[str], written: list[str]) -> str:
     """Build the tracking issue body for the review-actions setup."""
     files_list = "\n".join(f"- `{path}`" for path in written)
     secrets_list = "\n".join(f"- `{SECRET_NAMES[p]}` (for {p})" for p in providers)
-    secrets_list += f"\n- `{CICAID_CORE_TOKEN_SECRET}` (fine-grained PAT, Contents: Read-only, scoped to leonarduk/cicaid-core -- required to install cicaid-devtools)"
+    secrets_list += f"\n- `{CICAID_PRO_TOKEN_SECRET}` (fine-grained PAT, Contents: Read-only, scoped to leonarduk/cicaid-pro -- required to install cicaid-devtools-pro)"
     return (
         "## What\n\n"
         f"Set up GitHub Actions: {describe_included(providers, written)}, "
         "using the shared workflows from "
-        "[cicaid-devtools](https://github.com/leonarduk/cicaid-core).\n\n"
+        "[cicaid-devtools-pro](https://github.com/leonarduk/cicaid-pro).\n\n"
         "## Why\n\n"
         "To get automated PR review and baseline security/quality checks without "
         "hand-rolling the workflow, review-posting, and follow-up-issue logic per repo.\n\n"
@@ -1157,13 +1162,13 @@ def build_pr_body(providers: list[str], written: list[str], issue_number: str | 
         f"Adds GitHub Actions ({describe_included(providers, written)}):\n\n{files_list}\n\n"
         "## Why\n"
         "Automated PR review coverage, reusing the shared review logic "
-        "shipped in the `cicaid-devtools` package.\n\n"
+        "shipped in the `cicaid-devtools-pro` package.\n\n"
         "## Testing\n"
         "N/A (workflow files; will run on the next PR opened against this repo).\n\n"
         "## Checklist\n"
-        f"- [ ] Provision `{CICAID_CORE_TOKEN_SECRET}` (fine-grained PAT, Contents: "
-        "Read-only, scoped to leonarduk/cicaid-core) under Settings → Secrets and "
-        "variables → Actions -- required to install cicaid-devtools at all\n"
+        f"- [ ] Provision `{CICAID_PRO_TOKEN_SECRET}` (fine-grained PAT, Contents: "
+        "Read-only, scoped to leonarduk/cicaid-pro) under Settings → Secrets and "
+        "variables → Actions -- required to install cicaid-devtools-pro at all\n"
         "- [ ] Provision the required API key secret(s) under Settings → "
         "Secrets and variables → Actions\n"
         "- [ ] Confirm a review comment is posted on the next PR"
@@ -1343,7 +1348,7 @@ def main() -> int:
         if not ensure_default_branch_ruleset(owner, repo, token):
             return 1
 
-    install_spec = get_cicaid_core_install_spec()
+    install_spec = get_cicaid_pro_install_spec()
     files = render_workflows(
         install_spec,
         providers,

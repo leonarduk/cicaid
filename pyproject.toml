@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cicaid-devtools"
 dynamic = ["version"]
-description = "GitHub issue/PR plumbing CLI (free shell) - the LLM review/triage engine is cicaid-core"
+description = "GitHub issue/PR plumbing CLI (free shell) - the LLM review/triage engine is cicaid-pro"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -43,7 +43,11 @@ publish-pr = "cicaid_devtools.lib.publish_pr:main"
 fallback_version = "0.1.0"
 
 [tool.setuptools.packages.find]
+# cicaid_devtools has no __init__.py (PEP 420 namespace package) so
+# cicaid-pro's editable install can merge its own modules into the same
+# namespace from a sibling checkout instead of duplicating this package.
 where = ["src"]
+namespaces = true
 
 [tool.black]
 line-length = 100

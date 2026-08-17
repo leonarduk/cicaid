@@ -7,21 +7,25 @@ import yaml
 
 from cicaid_devtools import setup_review_actions as sra
 
-# ──────────────────────── get_cicaid_core_install_spec ──────────────────────
+# ──────────────────────── get_cicaid_pro_install_spec ──────────────────────
 
 
-def test_get_cicaid_core_install_spec_uses_pinned_ref():
-    spec = sra.get_cicaid_core_install_spec()
+def test_get_cicaid_pro_install_spec_uses_pinned_ref():
+    spec = sra.get_cicaid_pro_install_spec()
 
     assert spec == (
-        f"cicaid-devtools @ git+https://github.com/leonarduk/cicaid-core.git@{sra.CICAID_CORE_REF}"
+        '"cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@main" '
+        f'"cicaid-devtools-pro @ git+https://github.com/leonarduk/cicaid-pro.git@{sra.CICAID_PRO_REF}"'
     )
 
 
-def test_get_cicaid_core_install_spec_accepts_ref_override():
-    spec = sra.get_cicaid_core_install_spec(ref="v1.2.3")
+def test_get_cicaid_pro_install_spec_accepts_ref_override():
+    spec = sra.get_cicaid_pro_install_spec(ref="v1.2.3")
 
-    assert spec == "cicaid-devtools @ git+https://github.com/leonarduk/cicaid-core.git@v1.2.3"
+    assert spec == (
+        '"cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@main" '
+        '"cicaid-devtools-pro @ git+https://github.com/leonarduk/cicaid-pro.git@v1.2.3"'
+    )
 
 
 # ───────────────────────── prompt_yes_no / prompt_text ──────────────────────
@@ -184,7 +188,7 @@ def test_render_workflows_includes_reusable_provider_and_extras_by_default():
 
     assert set(files) == {
         ".github/workflows/_ai-pr-review.yml",
-        ".github/scripts/pip_install_cicaid_core.sh",
+        ".github/scripts/pip_install_cicaid_pro.sh",
         ".github/workflows/deepseek-pr-review.yml",
         ".github/workflows/gpt-pr-review.yml",
         ".github/workflows/dependency-review.yml",
@@ -198,30 +202,30 @@ def test_render_workflows_includes_reusable_provider_and_extras_by_default():
 
 
 def test_render_workflows_substitutes_install_spec():
-    files = sra.render_workflows("cicaid-devtools @ some-url", ["deepseek"])
+    files = sra.render_workflows('"cicaid-devtools @ some-url"', ["deepseek"])
 
     reusable = files[".github/workflows/_ai-pr-review.yml"]
-    assert 'pip_install_cicaid_core.sh pip install --retries 10 "cicaid-devtools @ some-url"' in reusable
+    assert 'pip_install_cicaid_pro.sh pip install --retries 10 "cicaid-devtools @ some-url"' in reusable
     assert sra.INSTALL_SPEC_PLACEHOLDER not in reusable
 
 
-def test_render_workflows_includes_cicaid_core_install_script():
+def test_render_workflows_includes_cicaid_pro_install_script():
     files = sra.render_workflows("cicaid-devtools @ some-url", ["deepseek"])
 
-    script = files[".github/scripts/pip_install_cicaid_core.sh"]
-    assert "CICAID_CORE_TOKEN" in script
-    assert "leonarduk/cicaid-core" in script
+    script = files[".github/scripts/pip_install_cicaid_pro.sh"]
+    assert "CICAID_PRO_TOKEN" in script
+    assert "leonarduk/cicaid-pro" in script
 
 
-def test_render_workflows_threads_cicaid_core_token_secret():
+def test_render_workflows_threads_cicaid_pro_token_secret():
     files = sra.render_workflows("cicaid-devtools @ some-url", ["deepseek", "gpt"])
 
     reusable = files[".github/workflows/_ai-pr-review.yml"]
-    assert "cicaid_core_token:" in reusable
+    assert "cicaid_pro_token:" in reusable
 
     for provider in ("deepseek", "gpt"):
         caller = files[f".github/workflows/{provider}-pr-review.yml"]
-        assert "cicaid_core_token: ${{ secrets.CICAID_CORE_TOKEN }}" in caller
+        assert "cicaid_pro_token: ${{ secrets.CICAID_PRO_TOKEN }}" in caller
 
 
 def test_render_workflows_linked_issue_extraction_drops_refs():
@@ -657,7 +661,7 @@ def test_main_returns_early_when_nothing_changed(monkeypatch, tmp_path):
     monkeypatch.setattr(sra, "check_gh_available", lambda: None)
     monkeypatch.setattr(sra, "check_working_tree_clean", lambda: True)
     monkeypatch.setattr(sra, "get_default_branch", lambda owner, repo: "main")
-    monkeypatch.setattr(sra, "get_cicaid_core_install_spec", lambda: "cicaid-devtools @ some-url")
+    monkeypatch.setattr(sra, "get_cicaid_pro_install_spec", lambda: "cicaid-devtools @ some-url")
     monkeypatch.setattr(sra, "diff_against_default_branch", lambda files, default_branch: {})
 
     def fail_if_called(*_args, **_kwargs):
@@ -685,7 +689,7 @@ def _patch_repo_plumbing(monkeypatch, tmp_path):
     monkeypatch.setattr(sra, "check_gh_available", lambda: None)
     monkeypatch.setattr(sra, "check_working_tree_clean", lambda: True)
     monkeypatch.setattr(sra, "get_default_branch", lambda owner, repo: "main")
-    monkeypatch.setattr(sra, "get_cicaid_core_install_spec", lambda: "cicaid-devtools @ some-url")
+    monkeypatch.setattr(sra, "get_cicaid_pro_install_spec", lambda: "cicaid-devtools @ some-url")
     monkeypatch.setattr(
         sra, "diff_against_default_branch", lambda files, default_branch: dict(files)
     )
