@@ -13,10 +13,10 @@ AI-review GitHub Actions into a target repo).
 
 The LLM-backed commands (`triage-issues`, `review-issue`, `create-issue`,
 `local-review`, `pr-review`, `commit-and-push`, `implement-issue-with-aider`,
-`clear-ai-slop-issues`) live in the sibling private repo **`cicaid-core`**
-(`../cicaid-core`), not here. If asked to add/fix an LLM-review or triage
+`clear-ai-slop-issues`) live in the sibling private repo **`cicaid-pro`**
+(`../cicaid-pro`), not here. If asked to add/fix an LLM-review or triage
 feature, that's almost certainly the other repo — see
-`../cicaid-core/CLAUDE.md` and `../CLAUDE.md` for the workspace layout.
+`../cicaid-pro/CLAUDE.md` and `../CLAUDE.md` for the workspace layout.
 
 ## Quick start
 
@@ -38,12 +38,12 @@ pytest
 
 ## High-signal warnings
 
-- **`cicaid` and `cicaid-core` both install as the same package name
+- **`cicaid` and `cicaid-pro` both install as the same package name
   (`cicaid-devtools`) with the same `cicaid` entry point.** Installing both
   into one environment has the second `pip install` silently overwrite the
   first's files. If both repos are checked out as siblings (they are here —
-  `GitHub/cicaid/{cicaid,cicaid-core}`), use cicaid-core's venv switcher
-  (`cicaid-core/scripts/use.ps1 free` / `use.ps1 core`) instead of installing
+  `GitHub/cicaid/{cicaid,cicaid-pro}`), use cicaid-pro's venv switcher
+  (`cicaid-pro/scripts/use.ps1 free` / `use.ps1 pro`) instead of installing
   both by hand.
 - No `version` field in `pyproject.toml` — version comes from
   `setuptools-scm` off the git tag at build time. Don't hand-edit a version.
@@ -52,7 +52,7 @@ pytest
   release workflow when a `v*` tag is pushed — don't hand-edit those blocks,
   they'll be overwritten on the next release anyway.
 - `setup-review-actions` makes **no LLM calls itself**; it only scaffolds
-  workflow YAML into a *target* repo that later calls into `cicaid-core`'s
+  workflow YAML into a *target* repo that later calls into `cicaid-pro`'s
   review logic using that target repo's own API-key secrets.
 - `scripts/bump_readme_version.py`, `scripts/bump_wiki_version.py`,
   `scripts/version_bump.py` support the release workflow — check there before

@@ -1,7 +1,7 @@
 # Open-core split: what's public vs private
 
 `cicaid` is the free, open-source shell of a larger toolset. The LLM-backed
-review and triage engine lives in a separate private package, `cicaid-core`.
+review and triage engine lives in a separate private package, `cicaid-pro`.
 
 ## What's here (public, MIT)
 
@@ -16,7 +16,7 @@ GitHub-plumbing commands that need no LLM access:
 - `run-ci-checks` — run a repo's local CI check suite
 - `setup-review-actions` — scaffold AI-review GitHub Actions into a repo
 
-## What's in `cicaid-core` (private)
+## What's in `cicaid-pro` (private)
 
 The LLM review/triage engine, and the commands built on it:
 
@@ -32,12 +32,12 @@ The LLM review/triage engine, and the commands built on it:
 Provider support (Claude, DeepSeek, GPT, Ollama) and the underlying
 diff/verdict parsing all live here too.
 
-Installing the public `cicaid` package without `cicaid-core` gives you the
-commands above; running a `cicaid-core`-only command will tell you it isn't
+Installing the public `cicaid` package without `cicaid-pro` gives you the
+commands above; running a `cicaid-pro`-only command will tell you it isn't
 available and point you at the private repo.
 
 ## Access
 
-`cicaid-core` is a private repository — see
-[leonarduk/cicaid-core](https://github.com/leonarduk/cicaid-core) for
+`cicaid-pro` is a private repository — see
+[leonarduk/cicaid-pro](https://github.com/leonarduk/cicaid-pro) for
 access.
