@@ -1093,42 +1093,6 @@ def find_existing_tracking_issue(owner: str, repo: str) -> str | None:
     return str(max(numbers)) if numbers else None
 
 
-def link_issue_to_pr(
-    owner: str, repo: str, pr_number: str, issue_number: str, token: str | None
-) -> bool:
-    """Formally link the setup PR to its tracking issue via the GitHub API.
-
-    Purely cosmetic on top of the 'Closes #<n>' body text that satisfies pr-lint,
-    so failures are logged and never fail the run. The path segment is the PR
-    number -- PRs and issues share GitHub's numbering space.
-    """
-    if not token:
-        return False
-    try:
-        resp = requests.post(
-            f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/links",
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"token {token}",
-            },
-            json={"issue_id": int(issue_number), "relationship": "closes"},
-            timeout=15,
-        )
-    except (requests.RequestException, ValueError) as exc:
-        logger.warning("Could not link PR %s to issue #%s: %s", pr_number, issue_number, exc)
-        return False
-    if resp.status_code in (200, 201):
-        logger.info("Linked PR %s to tracking issue #%s", pr_number, issue_number)
-        return True
-    logger.warning(
-        "Could not link PR %s to issue #%s: %s",
-        pr_number,
-        issue_number,
-        resp.text.strip()[:200],
-    )
-    return False
-
-
 EXTRA_LABELS = (
     ("dependency-review.yml", "dependency review"),
     ("workflow-lint.yml", "workflow lint"),
@@ -1493,19 +1457,6 @@ def main() -> int:
     if not pr_url:
         logger.error("Failed to create PR.")
         return 1
-
-    if issue_number:
-        pr_match = re.search(r"/pull/(\d+)", pr_url)
-        pr_number = pr_match.group(1) if pr_match else None
-        if pr_number:
-            try:
-                link_token = token or get_github_token()
-            except SystemExit:
-                # Cosmetic step: a missing token must not fail an otherwise
-                # successful run (the 'Closes #<n>' body text already satisfies pr-lint).
-                link_token = None
-            if link_token:
-                link_issue_to_pr(owner, repo, pr_number, issue_number, link_token)
 
     logger.info("\n[OK] PR created: %s", pr_url)
     if issue_url:
