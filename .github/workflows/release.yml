@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # needed by setuptools-scm to derive version from git tags
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      # Publish the installable artifacts before the best-effort documentation
+      # updates below. A wiki or README failure must not leave a published
+      # release without the wheel advertised by the updater.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ github.ref_name }}" &>/dev/null; then
+            echo "Release already exists; uploading artifacts."
+            # A previous attempt may have uploaded only some assets before failing.
+            # Replace those assets so rerunning the workflow remains safe.
+            gh release upload "${{ github.ref_name }}" dist/* --clobber
+          else
+            gh release create "${{ github.ref_name }}" dist/* \
+              --title "${{ github.ref_name }}" \
+              --generate-notes
+          fi
+
+      - name: Update README to this release's version
+        run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
+
+      - name: Push README update to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet README.md; then
+            echo "README.md unchanged; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Update README install commands to ${{ github.ref_name }}"
+
+          # Strategy 1: PR-based merge (works with branch protection if
+          # repo settings allow Actions to create PRs).
+          BRANCH="readme-bump-${GITHUB_REF_NAME#v}"
+          git checkout -b "$BRANCH"
+          git push --force origin "$BRANCH"
+
+          if PR_URL=$(gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Update README install commands to ${{ github.ref_name }}" \
+            --body "Automated version bump triggered by release ${{ github.ref_name }}." 2>/dev/null); then
+            echo "Created $PR_URL"
+            gh pr merge "$PR_URL" --merge || \
+              echo "::warning::Could not auto-merge $PR_URL — merge it manually."
+          else
+            # Strategy 2: direct push (fallback when Actions cannot create PRs).
+            echo "::notice::PR creation blocked by repo settings; trying direct push."
+            if git push origin HEAD:main 2>&1; then
+              echo "Pushed README update to main."
+            else
+              echo "::warning::Could not update the README on main."
+              echo "::warning::To fix: enable 'Allow GitHub Actions to create"
+              echo "::warning::pull requests' in repo Settings → Actions → General,"
+              echo "::warning::or manually run: scripts/bump_readme_version.py"
+            fi
+          fi
+
+      - name: Update wiki Quick-Start page to this release's version
+        env:
+          # The default GITHUB_TOKEN often lacks write access to the wiki repo.
+          # Set a WIKI_TOKEN repo secret (a PAT with repo scope) if pushes fail
+          # with a permission error; otherwise this falls back to github.token.
+          GH_TOKEN: ${{ secrets.WIKI_TOKEN || github.token }}
+          GIT_ASKPASS: ${{ github.workspace }}/scripts/git-askpass.sh
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          # Do not rely on the checkout preserving executable mode: Git invokes
+          # GIT_ASKPASS directly, so make that requirement explicit here.
+          chmod +x "$GIT_ASKPASS"
+          WIKI_DIR="$(mktemp -d)/wiki"
+          CLONE_LOG="$(mktemp)"
+          # Keep the token out of both git configuration and command arguments.
+          # The username is not secret; GIT_ASKPASS supplies only the password.
+          if ! git clone "https://x-access-token@github.com/${{ github.repository }}.wiki.git" "$WIKI_DIR" >"$CLONE_LOG" 2>&1; then
+            if grep -qi "not found" "$CLONE_LOG"; then
+              echo "::warning::Wiki repo not found; skipping wiki update. Does the wiki have a Home page yet?"
+              cat "$CLONE_LOG"
+              exit 0
+            fi
+            echo "::error::Failed to clone the wiki repo."
+            cat "$CLONE_LOG"
+            exit 1
+          fi
+
+          python scripts/bump_wiki_version.py "${{ github.ref_name }}" \
+            "$WIKI_DIR/Quick-Start.md" \
+            --repo-url "https://github.com/${{ github.repository }}"
+
+          cd "$WIKI_DIR"
+          if git diff --quiet Quick-Start.md; then
+            echo "Quick-Start.md unchanged; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Quick-Start.md
+          git commit -m "Update Quick-Start install commands to ${{ github.ref_name }}"
+          git push origin HEAD:master

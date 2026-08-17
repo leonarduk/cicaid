@@ -1,0 +1,176 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install package with test extras
+        run: python -m pip install --upgrade pip && pip install -e ".[test]"
+
+      - name: Run tests
+        run: pytest --cov=cicaid_devtools --cov-report=term-missing
+
+  validate-distributions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # setuptools-scm needs the complete history to reproduce the version
+          # embedded in the distribution metadata.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Build source and wheel distributions
+        run: |
+          python -m pip install --upgrade pip build setuptools-scm
+          echo "EXPECTED_SCM_VERSION=$(python -c 'from setuptools_scm import get_version; print(get_version(root="."))')" >> "$GITHUB_ENV"
+          python -m build
+
+      - name: Validate distribution contents and version
+        run: |
+          python - <<'PY'
+          from email.parser import BytesParser
+          from email.policy import default
+          import os
+          from pathlib import Path
+          from tarfile import open as open_tar
+          from zipfile import ZipFile
+
+          sdists = list(Path("dist").glob("*.tar.gz"))
+          if len(sdists) != 1:
+              raise SystemExit(f"expected exactly one sdist, found: {sdists}")
+
+          with open_tar(sdists[0], "r:gz") as archive:
+              sdist_members = {Path(name) for name in archive.getnames()}
+          sdist_roots = {path.parts[0] for path in sdist_members if path.parts}
+          if len(sdist_roots) != 1:
+              raise SystemExit(f"expected one sdist root directory, found: {sdist_roots}")
+          sdist_root = next(iter(sdist_roots))
+          for required_name in ("README.md", ".git_archival.txt"):
+              required_path = Path(sdist_root, required_name)
+              if required_path not in sdist_members:
+                  raise SystemExit(f"sdist is missing root file {required_name}")
+
+          wheels = list(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"expected exactly one wheel, found: {wheels}")
+
+          wheel = wheels[0]
+          with ZipFile(wheel) as archive:
+              members = set(archive.namelist())
+              metadata_files = [name for name in members if name.endswith(".dist-info/METADATA")]
+              if len(metadata_files) != 1:
+                  raise SystemExit(
+                      f"expected exactly one .dist-info/METADATA file, found: {metadata_files}"
+                  )
+              raw_metadata = archive.read(metadata_files[0])
+              metadata = BytesParser(policy=default).parsebytes(raw_metadata)
+
+          expected_modules = {
+              path.relative_to("src").as_posix()
+              for path in Path("src/cicaid_devtools").rglob("*.py")
+          }
+          missing_modules = sorted(expected_modules - members)
+          if missing_modules:
+              raise SystemExit(f"wheel is missing package modules: {missing_modules}")
+
+          readme = Path("README.md").read_bytes().replace(b"\r\n", b"\n")
+          # Compare content after normalizing line endings: the checkout may be
+          # LF-only while the RFC 822 metadata serializer can emit CRLF, so a
+          # strict byte comparison would fail even when the README content
+          # matches. The first blank line is the header/body boundary; later
+          # blank lines belong to the README.
+          separator = b"\r\n\r\n" if b"\r\n\r\n" in raw_metadata else b"\n\n"
+          _, found_separator, description = raw_metadata.partition(separator)
+          if not found_separator:
+              raise SystemExit("wheel metadata has no description payload")
+          if description.replace(b"\r\n", b"\n") != readme:
+              raise SystemExit("wheel metadata does not contain the current README.md")
+
+          expected_version = os.environ["EXPECTED_SCM_VERSION"]
+          packaged_version = metadata["Version"]
+          if packaged_version != expected_version:
+              raise SystemExit(
+                  f"wheel version {packaged_version!r} does not match "
+                  f"setuptools-scm version {expected_version!r}"
+              )
+
+          print(
+              f"Validated {sdists[0]} and {wheel}: "
+              f"{len(expected_modules)} modules, README, version {packaged_version}"
+          )
+          PY
+
+      - name: Build from source archive without Git metadata
+        run: |
+          mkdir archive-source archive-dist
+          tar -xzf dist/*.tar.gz -C archive-source --strip-components=1
+          test ! -e archive-source/.git
+          python -m build --wheel --outdir archive-dist archive-source
+
+          python - <<'PY'
+          from email.parser import BytesParser
+          from email.policy import default
+          import os
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("archive-dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"expected exactly one archive-built wheel, found: {wheels}")
+
+          with ZipFile(wheels[0]) as archive:
+              metadata_files = [
+                  name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+              ]
+              if len(metadata_files) != 1:
+                  raise SystemExit(
+                      "expected exactly one archive-built .dist-info/METADATA file, "
+                      f"found: {metadata_files}"
+                  )
+              raw_metadata = archive.read(metadata_files[0])
+
+          metadata = BytesParser(policy=default).parsebytes(raw_metadata)
+          if metadata["Version"] != os.environ["EXPECTED_SCM_VERSION"]:
+              raise SystemExit(
+                  f"archive-built wheel version {metadata['Version']!r} does not match "
+                  f"setuptools-scm version {os.environ['EXPECTED_SCM_VERSION']!r}"
+              )
+
+          separator = b"\r\n\r\n" if b"\r\n\r\n" in raw_metadata else b"\n\n"
+          _, found_separator, packaged_readme = raw_metadata.partition(separator)
+          if not found_separator:
+              raise SystemExit("archive-built wheel metadata has no description payload")
+          expected_readme = Path("README.md").read_bytes().replace(b"\r\n", b"\n")
+          if packaged_readme.replace(b"\r\n", b"\n") != expected_readme:
+              raise SystemExit("archive-built wheel metadata does not contain the current README.md")
+
+          print(f"Validated archive-built wheel {wheels[0]}")
+          PY
+
+      - name: Smoke test installed wheel
+        run: |
+          python -m venv wheel-venv
+          wheel-venv/bin/python -m pip install --no-deps dist/*.whl
+          cd "$(mktemp -d)"
+          "$GITHUB_WORKSPACE/wheel-venv/bin/python" -c \
+            "from importlib.metadata import version; import cicaid_devtools; assert version('cicaid-devtools') == '$EXPECTED_SCM_VERSION'"
