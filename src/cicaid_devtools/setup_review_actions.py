@@ -23,7 +23,6 @@ repository's default branch.
 from __future__ import annotations
 
 import argparse
-import functools
 import json
 import logging
 import os
@@ -51,7 +50,16 @@ from cicaid_devtools.lib.publish_pr import (
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-CICAID_REPO = "leonarduk/cicaid"
+# The review integrations these generated workflows import (review_diff,
+# review_comment, deepseek_review, gpt_review, verdict, followups, etc.) live
+# in cicaid-core, not in this (leonarduk/cicaid) "free shell" package -- see
+# https://github.com/leonarduk/cicaid-core. cicaid-core is private, so it has
+# no public releases API to query; the install is pinned to a fixed tag here
+# instead of resolved dynamically, and cloned over git+https using a
+# short-lived, request-scoped git credential (see PIP_INSTALL_CICAID_CORE_SCRIPT).
+CICAID_CORE_REPO = "leonarduk/cicaid-core"
+CICAID_CORE_REF = "v0.9.1"
+CICAID_CORE_TOKEN_SECRET = "CICAID_CORE_TOKEN"
 DEFAULT_BRANCH_NAME = "chore/setup-review-actions"
 PROVIDERS = ("deepseek", "gpt")
 INSTALL_SPEC_PLACEHOLDER = "__CICAID_INSTALL_SPEC__"
@@ -104,6 +112,9 @@ on:
       gh_token:
         description: "Token used for gh CLI calls (PR/issue read and write)"
         required: true
+      cicaid_core_token:
+        description: "Fine-grained PAT (Contents: Read-only) scoped to leonarduk/cicaid-core, used to install cicaid-devtools since the review modules (review_diff, review_comment, deepseek_review, gpt_review, etc.) only exist in the private cicaid-core package"
+        required: true
 
 # github.workflow resolves to the *calling* workflow's name (DeepSeek/GPT PR
 # Review), so this groups per-provider without cross-cancelling other
@@ -131,8 +142,17 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install cicaid-devtools
-        run: python -m pip install "__CICAID_INSTALL_SPEC__"
+      # The AI-review modules this workflow imports below (review_diff,
+      # review_comment, deepseek_review, gpt_review, etc.) only exist in the
+      # private leonarduk/cicaid-core package, not this public "free shell"
+      # repo -- installing from here either 404s or is missing these
+      # modules. pip_install_cicaid_core.sh validates the token up front and
+      # exposes the credential only to the pip process through GIT_CONFIG_*
+      # variables.
+      - name: Install cicaid-devtools (PR review helpers)
+        env:
+          CICAID_CORE_TOKEN: ${{ secrets.cicaid_core_token }}
+        run: bash .github/scripts/pip_install_cicaid_core.sh pip install --retries 10 "__CICAID_INSTALL_SPEC__"
 
       - name: Get linked issue body
         id: issue
@@ -369,6 +389,7 @@ jobs:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
       deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}
+      cicaid_core_token: ${{ secrets.CICAID_CORE_TOKEN }}
 """,
     "gpt": """name: GPT PR Review
 
@@ -393,8 +414,54 @@ jobs:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
       deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}
+      cicaid_core_token: ${{ secrets.CICAID_CORE_TOKEN }}
 """,
 }
+
+PIP_INSTALL_CICAID_CORE_SCRIPT = """#!/usr/bin/env bash
+# Runs a command (typically a pip install) with git credentials configured so it
+# can clone the private leonarduk/cicaid-core repo. The AI-review modules the
+# generated workflows import (review_diff, review_comment, deepseek_review,
+# gpt_review, etc.) only exist in cicaid-core, not the public leonarduk/cicaid
+# "free shell" package, so a plain pip install of the public wheel/repo 404s
+# or is missing these modules.
+#
+# Fails fast with an actionable message if CICAID_CORE_TOKEN is unset or empty,
+# instead of letting the wrapped command fail later with a confusing git auth
+# error. The credential rewrite is scoped to exactly this invocation through
+# Git's GIT_CONFIG_* environment variables; the token is never written to a
+# config file.
+#
+# Uses `url.<base>.insteadOf` with the token embedded as URL userinfo, rather
+# than a `credential.<url>.helper` shell snippet that reads the token from the
+# env var at request time. The helper form looks more secure on paper (the raw
+# token never touches disk), but empirically it is NOT reliable here: any
+# pre-existing generic `credential.helper` (e.g. Git Credential Manager, or a
+# local `gh auth login`) is consulted first and can supply -- or fail to yield
+# to -- a different credential before a URL-scoped helper ever runs, since
+# helpers accumulate across config scopes rather than "most specific wins".
+# The `insteadOf` rewrite has no such ambiguity: the token is embedded
+# directly in the URL, which git's transport layer uses unconditionally
+# without consulting the credential-helper chain at all. GitHub's own PAT
+# formats (ghp_/github_pat_/gho_/ghs_/ghr_) are always alphanumeric and never
+# contain the URL-reserved characters (@, :, /) that would make this rewrite
+# unsafe, so that's not a practical concern for the token this script expects.
+#
+# Usage: pip_install_cicaid_core.sh <command...>
+# Required env: CICAID_CORE_TOKEN
+set -euo pipefail
+
+if [ -z "${CICAID_CORE_TOKEN:-}" ]; then
+  echo "::error::CICAID_CORE_TOKEN is empty or unset. Add a fine-grained PAT (Contents: Read-only, scoped to leonarduk/cicaid-core) as the CICAID_CORE_TOKEN repository secret (Settings > Secrets and variables > Actions) before this workflow can install cicaid-devtools." >&2
+  exit 1
+fi
+
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0="url.https://x-access-token:${CICAID_CORE_TOKEN}@github.com/leonarduk/cicaid-core.insteadOf"
+export GIT_CONFIG_VALUE_0="https://github.com/leonarduk/cicaid-core"
+
+exec "$@"
+"""
 
 DEPENDENCY_REVIEW_TEMPLATE = """name: Dependency Review
 
@@ -647,36 +714,17 @@ ISSUE_TEMPLATE_FILES = {
 SECRET_NAMES = {"deepseek": "DEEPSEEK_API_KEY", "gpt": "OPENAI_API_KEY"}
 
 
-@functools.lru_cache(maxsize=1)
-def _get_latest_cicaid_release_install_spec() -> str:
-    """Fetch and cache the install spec for the latest successful lookup."""
-    resp = requests.get(
-        f"https://api.github.com/repos/{CICAID_REPO}/releases/latest", timeout=10
-    )
-    resp.raise_for_status()
-    tag = resp.json()["tag_name"]
-    version = tag[1:] if tag.startswith("v") else tag
-    url = (
-        f"https://github.com/{CICAID_REPO}/releases/download/"
-        f"{tag}/cicaid_devtools-{version}-py3-none-any.whl"
-    )
-    return f"cicaid-devtools @ {url}"
+def get_cicaid_core_install_spec(ref: str = CICAID_CORE_REF) -> str:
+    """Return the pip install spec for cicaid-devtools, pinned to a cicaid-core ref.
 
-
-def get_latest_cicaid_install_spec() -> str:
-    """Return a cached pip install spec pinned to the latest release.
-
-    Falls back to tracking the ``main`` branch via ``git+https`` if the
-    releases API can't be reached (network issues, rate limiting). Failed
-    lookups are not cached, so a later call can retry the API.
+    cicaid-core is private, so unlike this repo it has no public releases API
+    to query for "latest" -- and even if it did, an unauthenticated lookup
+    would 404. The generated workflow clones it over git+https using a
+    request-scoped credential (CICAID_CORE_TOKEN, injected by
+    pip_install_cicaid_core.sh), so the install spec here is just the git URL
+    pinned to a fixed, known-good tag rather than a resolved release asset.
     """
-    try:
-        return _get_latest_cicaid_release_install_spec()
-    except (requests.RequestException, KeyError, ValueError) as exc:
-        logger.warning(
-            "Could not resolve latest cicaid-devtools release (%s); tracking main instead.", exc
-        )
-        return f"cicaid-devtools @ git+https://github.com/{CICAID_REPO}.git@main"
+    return f"cicaid-devtools @ git+https://github.com/{CICAID_CORE_REPO}.git@{ref}"
 
 
 def prompt_yes_no(question: str, default: bool) -> bool:
@@ -827,7 +875,11 @@ def render_workflows(
     files = {
         ".github/workflows/_ai-pr-review.yml": REUSABLE_WORKFLOW_TEMPLATE.replace(
             INSTALL_SPEC_PLACEHOLDER, install_spec
-        )
+        ),
+        # Required by the "Install cicaid-devtools" step above -- cicaid-core
+        # is private, so the install needs a scoped git credential injected
+        # via this wrapper rather than a plain `pip install`.
+        ".github/scripts/pip_install_cicaid_core.sh": PIP_INSTALL_CICAID_CORE_SCRIPT,
     }
     for provider in providers:
         files[f".github/workflows/{provider}-pr-review.yml"] = CALLER_WORKFLOW_TEMPLATES[provider]
@@ -1101,11 +1153,12 @@ def build_issue_body(providers: list[str], written: list[str]) -> str:
     """Build the tracking issue body for the review-actions setup."""
     files_list = "\n".join(f"- `{path}`" for path in written)
     secrets_list = "\n".join(f"- `{SECRET_NAMES[p]}` (for {p})" for p in providers)
+    secrets_list += f"\n- `{CICAID_CORE_TOKEN_SECRET}` (fine-grained PAT, Contents: Read-only, scoped to leonarduk/cicaid-core -- required to install cicaid-devtools)"
     return (
         "## What\n\n"
         f"Set up GitHub Actions: {describe_included(providers, written)}, "
         "using the shared workflows from "
-        "[cicaid-devtools](https://github.com/leonarduk/cicaid).\n\n"
+        "[cicaid-devtools](https://github.com/leonarduk/cicaid-core).\n\n"
         "## Why\n\n"
         "To get automated PR review and baseline security/quality checks without "
         "hand-rolling the workflow, review-posting, and follow-up-issue logic per repo.\n\n"
@@ -1144,6 +1197,9 @@ def build_pr_body(providers: list[str], written: list[str], issue_number: str | 
         "## Testing\n"
         "N/A (workflow files; will run on the next PR opened against this repo).\n\n"
         "## Checklist\n"
+        f"- [ ] Provision `{CICAID_CORE_TOKEN_SECRET}` (fine-grained PAT, Contents: "
+        "Read-only, scoped to leonarduk/cicaid-core) under Settings → Secrets and "
+        "variables → Actions -- required to install cicaid-devtools at all\n"
         "- [ ] Provision the required API key secret(s) under Settings → "
         "Secrets and variables → Actions\n"
         "- [ ] Confirm a review comment is posted on the next PR"
@@ -1323,7 +1379,7 @@ def main() -> int:
         if not ensure_default_branch_ruleset(owner, repo, token):
             return 1
 
-    install_spec = get_latest_cicaid_install_spec()
+    install_spec = get_cicaid_core_install_spec()
     files = render_workflows(
         install_spec,
         providers,
