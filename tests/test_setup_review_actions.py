@@ -14,14 +14,18 @@ def test_get_cicaid_pro_install_spec_uses_pinned_ref():
     spec = sra.get_cicaid_pro_install_spec()
 
     assert spec == (
-        f"cicaid-devtools @ git+https://github.com/leonarduk/cicaid-pro.git@{sra.CICAID_PRO_REF}"
+        '"cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@main" '
+        f'"cicaid-devtools-pro @ git+https://github.com/leonarduk/cicaid-pro.git@{sra.CICAID_PRO_REF}"'
     )
 
 
 def test_get_cicaid_pro_install_spec_accepts_ref_override():
     spec = sra.get_cicaid_pro_install_spec(ref="v1.2.3")
 
-    assert spec == "cicaid-devtools @ git+https://github.com/leonarduk/cicaid-pro.git@v1.2.3"
+    assert spec == (
+        '"cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@main" '
+        '"cicaid-devtools-pro @ git+https://github.com/leonarduk/cicaid-pro.git@v1.2.3"'
+    )
 
 
 # ───────────────────────── prompt_yes_no / prompt_text ──────────────────────
@@ -198,7 +202,7 @@ def test_render_workflows_includes_reusable_provider_and_extras_by_default():
 
 
 def test_render_workflows_substitutes_install_spec():
-    files = sra.render_workflows("cicaid-devtools @ some-url", ["deepseek"])
+    files = sra.render_workflows('"cicaid-devtools @ some-url"', ["deepseek"])
 
     reusable = files[".github/workflows/_ai-pr-review.yml"]
     assert 'pip_install_cicaid_pro.sh pip install --retries 10 "cicaid-devtools @ some-url"' in reusable
