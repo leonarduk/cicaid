@@ -8,7 +8,7 @@ command auto-detects the repo from your `origin` remote.
 This is the free shell. The LLM-backed commands (`triage-issues`,
 `review-issue`, `create-issue`, `local-review`, `pr-review`,
 `commit-and-push`, `implement-issue-with-aider`, `clear-ai-slop-issues`) are
-part of [cicaid-core](https://github.com/leonarduk/cicaid-core), a private
+part of [cicaid-pro](https://github.com/leonarduk/cicaid-pro), a private
 package — `cicaid <command>` reports itself unavailable with a pointer there
 until it's installed.
 
@@ -36,10 +36,10 @@ cicaid publish-pr            # open the PR
 cicaid run-ci-checks --list  # this repo's local check suite
 ```
 
-## Access to cicaid-core
+## Access to cicaid-pro
 
 The LLM review/triage engine is the part of cicaid that's actually hard to
-reproduce, and is kept in a private package, cicaid-core. Contact the
+reproduce, and is kept in a private package, cicaid-pro. Contact the
 maintainer for access.
 
 ## License

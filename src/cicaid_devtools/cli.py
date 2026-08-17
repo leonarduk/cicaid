@@ -76,10 +76,10 @@ def _resolve_command(command: str) -> str:
     return NUMERIC_SHORTCUTS.get(command, command)
 
 
-_CORE_MISSING_MESSAGE = (
-    "✗ `cicaid {command}` is part of cicaid-core (the LLM review/triage "
+_PRO_MISSING_MESSAGE = (
+    "✗ `cicaid {command}` is part of cicaid-pro (the LLM review/triage "
     "engine), a private package not installed here — see "
-    "https://github.com/leonarduk/cicaid-core for access."
+    "https://github.com/leonarduk/cicaid-pro for access."
 )
 
 
@@ -90,11 +90,11 @@ def _dispatch(command: str, args: list[str]) -> int:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError as exc:
         # Only swallow "this specific command's module doesn't exist" (the
-        # free shell doesn't ship cicaid-core's LLM-backed commands) — a
+        # free shell doesn't ship cicaid-pro's LLM-backed commands) — a
         # missing transitive dependency inside a module that DID import must
         # still surface as a real error, not this friendly message.
         if exc.name == module_name:
-            print(_CORE_MISSING_MESSAGE.format(command=command), file=sys.stderr)
+            print(_PRO_MISSING_MESSAGE.format(command=command), file=sys.stderr)
             return 2
         raise
 

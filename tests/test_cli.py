@@ -6,8 +6,8 @@ from cicaid_devtools import cli
 
 
 # Commands whose module ships in this (free-shell) package. The rest are
-# part of the private cicaid-core package and are expected to fail import —
-# see test_core_only_commands_report_unavailable below.
+# part of the private cicaid-pro package and are expected to fail import —
+# see test_pro_only_commands_report_unavailable below.
 _LOCAL_COMMANDS = {
     "sync-issues",
     "work-on-issue",
@@ -37,12 +37,12 @@ def test_every_local_command_module_and_main_resolve():
 @pytest.mark.parametrize(
     "command", [c for c in cli.COMMANDS if c not in _LOCAL_COMMANDS]
 )
-def test_core_only_commands_report_unavailable(command, capsys):
-    """A cicaid-core command run without cicaid-core installed reports a
+def test_pro_only_commands_report_unavailable(command, capsys):
+    """A cicaid-pro command run without cicaid-pro installed reports a
     clear pointer instead of a raw ModuleNotFoundError traceback."""
     assert cli.main([command]) == 2
     captured = capsys.readouterr()
-    assert "cicaid-core" in captured.err
+    assert "cicaid-pro" in captured.err
     assert command in captured.err
 
 

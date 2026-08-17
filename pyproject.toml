@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cicaid-devtools"
 dynamic = ["version"]
-description = "GitHub issue/PR plumbing CLI (free shell) - the LLM review/triage engine is cicaid-core"
+description = "GitHub issue/PR plumbing CLI (free shell) - the LLM review/triage engine is cicaid-pro"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
