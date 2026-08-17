@@ -3,40 +3,33 @@ installed individually (sync-issues, work-on-issue, ...) so there's one name to
 remember instead of seventeen. Run `cicaid` with no arguments, or `cicaid --help`,
 to list every command with a one-line description; the individual flat commands
 keep working unchanged for anything already scripted against them.
+
+Extensions (e.g. cicaid-pro, the private LLM-backed command package) register
+their own commands under the "cicaid.commands" entry-point group in their own
+package metadata, discovered at runtime -- this package never hardcodes what
+an extension provides, so it never needs updating (or a new release) just
+because an extension added a command.
 """
 
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import sys
 
 from cicaid_devtools.version_checker import check_and_prompt
 
-# (module, one-line description) -- kept in the same order as the README's command
+ENTRY_POINT_GROUP = "cicaid.commands"
+
+# This package's own commands -- always available regardless of what
+# extensions are installed. Kept in the same order as the README's command
 # table so `cicaid --help` and the docs read the same way.
 COMMANDS: dict[str, tuple[str, str]] = {
     "sync-issues": ("cicaid_devtools.sync_issues", "Sync GitHub issues to local markdown files"),
-    "triage-issues": ("cicaid_devtools.triage_issues", "Triage unmilestoned open issues"),
-    "clear-ai-slop-issues": (
-        "cicaid_devtools.clear_ai_slop_issues",
-        "Detect and close duplicate/stale/AI-slop issues",
-    ),
-    "review-issue": ("cicaid_devtools.review_issue", "Refresh a stale issue with an LLM"),
-    "create-issue": ("cicaid_devtools.create_issue", "Draft and create a new GitHub issue"),
     "work-on-issue": ("cicaid_devtools.work_on_issue", "Check out a branch for an issue"),
-    "implement-issue-with-aider": (
-        "cicaid_devtools.implement_issue_with_aider",
-        "Extract an issue prompt for Aider",
-    ),
     "work-on-pr": ("cicaid_devtools.work_on_pr", "Check out the branch for an open PR"),
     "run-ci-checks": ("cicaid_devtools.run_ci_checks", "Run the local CI check suite"),
-    "local-review": ("cicaid_devtools.local_review", "LLM-review uncommitted local changes"),
-    "commit-and-push": (
-        "cicaid_devtools.lib.commit_and_push",
-        "Commit with an LLM-drafted message and push",
-    ),
     "publish-pr": ("cicaid_devtools.lib.publish_pr", "Publish a PR from the current branch"),
-    "pr-review": ("cicaid_devtools.pr_review", "LLM-review an open PR"),
     "add-issue-to-pr": ("cicaid_devtools.add_issue_to_pr", "Link an issue to its PR"),
     "dependabot-auto-merge": (
         "cicaid_devtools.dependabot_auto_merge",
@@ -52,51 +45,69 @@ COMMANDS: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Numeric shortcut -> command name, derived from COMMANDS insertion order (1-indexed).
-NUMERIC_SHORTCUTS: dict[str, str] = {
-    str(i): name for i, name in enumerate(COMMANDS, start=1)
-}
+
+def _describe(module_name: str) -> str:
+    """First line of ``module_name``'s docstring, or "" if it can't be imported."""
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        return ""
+    doc = (module.__doc__ or "").strip()
+    # Match this package's own descriptions, which are terse phrases with no
+    # trailing period.
+    return doc.splitlines()[0].rstrip(".") if doc else ""
 
 
-def print_help() -> None:
+def discover_commands() -> dict[str, tuple[str, str]]:
+    """This package's own commands, plus any installed extension's.
+
+    Extensions register commands under the "cicaid.commands" entry-point
+    group in their own package metadata (see cicaid-pro's pyproject.toml for
+    an example) -- only commands from packages actually installed right now
+    show up here, and this package's own commands take precedence on a name
+    collision.
+    """
+    commands = dict(COMMANDS)
+    for entry_point in importlib.metadata.entry_points(group=ENTRY_POINT_GROUP):
+        if entry_point.name in commands:
+            continue
+        module_name = entry_point.value.split(":", 1)[0]
+        commands[entry_point.name] = (module_name, _describe(module_name))
+    return commands
+
+
+def _numeric_shortcuts(commands: dict[str, tuple[str, str]]) -> dict[str, str]:
+    """Numeric shortcut -> command name, derived from insertion order (1-indexed)."""
+    return {str(i): name for i, name in enumerate(commands, start=1)}
+
+
+def print_help(commands: dict[str, tuple[str, str]]) -> None:
     """Print the command list, e.g. for `cicaid` with no arguments."""
     print("Usage: cicaid <command|number> [args...]")
     print("       cicaid help <command|number>  (detailed command help)")
     print("       cicaid sync-issues         (or: cicaid 1) — sync GitHub issues")
     print("       cicaid <command> --help    (that command's full flags)\n")
     print("Commands:")
-    width = max(len(name) for name in COMMANDS)
-    for i, (name, (_, description)) in enumerate(COMMANDS.items(), start=1):
+    width = max(len(name) for name in commands)
+    for i, (name, (_, description)) in enumerate(commands.items(), start=1):
         label = f"{name} ({i})"
         print(f"  {label.ljust(width + 5)}  {description}")
 
 
-def _resolve_command(command: str) -> str:
+def _resolve_command(command: str, numeric_shortcuts: dict[str, str]) -> str:
     """Resolve a command name or its numeric shortcut."""
-    return NUMERIC_SHORTCUTS.get(command, command)
+    return numeric_shortcuts.get(command, command)
 
 
-_PRO_MISSING_MESSAGE = (
-    "✗ `cicaid {command}` is part of cicaid-pro (the LLM review/triage "
-    "engine), a private package not installed here — see "
-    "https://github.com/leonarduk/cicaid-pro for access."
+_UNKNOWN_COMMAND_SUFFIX = (
+    "an installed extension package (e.g. cicaid-pro) may provide it"
 )
 
 
-def _dispatch(command: str, args: list[str]) -> int:
+def _dispatch(command: str, args: list[str], commands: dict[str, tuple[str, str]]) -> int:
     """Run a command with ``args``, restoring the caller's ``sys.argv``."""
-    module_name, _ = COMMANDS[command]
-    try:
-        module = importlib.import_module(module_name)
-    except ModuleNotFoundError as exc:
-        # Only swallow "this specific command's module doesn't exist" (the
-        # free shell doesn't ship cicaid-pro's LLM-backed commands) — a
-        # missing transitive dependency inside a module that DID import must
-        # still surface as a real error, not this friendly message.
-        if exc.name == module_name:
-            print(_PRO_MISSING_MESSAGE.format(command=command), file=sys.stderr)
-            return 2
-        raise
+    module_name, _ = commands[command]
+    module = importlib.import_module(module_name)
 
     # The targets generally read sys.argv themselves (via argparse.parse_args()).
     original_argv = sys.argv
@@ -121,36 +132,45 @@ def main(argv: list[str] | None = None) -> int:
 
     check_and_prompt()
 
+    commands = discover_commands()
+    numeric_shortcuts = _numeric_shortcuts(commands)
+
     if not argv or argv[0] in ("-h", "--help"):
-        print_help()
+        print_help(commands)
         return 0
 
     if argv[0] == "help":
         if len(argv) == 1:
-            print_help()
+            print_help(commands)
             return 0
         if len(argv) > 2:
             print("Usage: cicaid help <command|number>", file=sys.stderr)
             return 1
 
-        command = _resolve_command(argv[1])
-        if command not in COMMANDS:
-            print(f"Unknown command: {argv[1]!r}\n", file=sys.stderr)
-            print_help()
+        command = _resolve_command(argv[1], numeric_shortcuts)
+        if command not in commands:
+            print(
+                f"Unknown command: {argv[1]!r} -- {_UNKNOWN_COMMAND_SUFFIX}.\n",
+                file=sys.stderr,
+            )
+            print_help(commands)
             return 1
-        return _dispatch(command, ["--help"])
+        return _dispatch(command, ["--help"], commands)
 
     command, rest = argv[0], argv[1:]
     # Resolve numeric shortcuts to their corresponding command names.
-    if command in NUMERIC_SHORTCUTS:
-        command = _resolve_command(command)
+    if command in numeric_shortcuts:
+        command = _resolve_command(command, numeric_shortcuts)
         print(f"Running: cicaid {command}")
-    if command not in COMMANDS:
-        print(f"Unknown command: {command!r}\n", file=sys.stderr)
-        print_help()
+    if command not in commands:
+        print(
+            f"Unknown command: {command!r} -- {_UNKNOWN_COMMAND_SUFFIX}.\n",
+            file=sys.stderr,
+        )
+        print_help(commands)
         return 1
 
-    return _dispatch(command, rest)
+    return _dispatch(command, rest, commands)
 
 
 if __name__ == "__main__":

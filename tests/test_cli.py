@@ -5,45 +5,65 @@ import pytest
 from cicaid_devtools import cli
 
 
-# Commands whose module ships in this (free-shell) package. The rest are
-# part of the private cicaid-pro package and are expected to fail import —
-# see test_pro_only_commands_report_unavailable below.
-_LOCAL_COMMANDS = {
-    "sync-issues",
-    "work-on-issue",
-    "work-on-pr",
-    "run-ci-checks",
-    "publish-pr",
-    "add-issue-to-pr",
-    "dependabot-auto-merge",
-    "setup-review-actions",
-    "update-issue",
-}
-
-
-def test_every_local_command_module_and_main_resolve():
+def test_every_command_module_and_main_resolve():
     """Guards against a typo'd module path or a target missing main(), for
-    every command this package actually ships."""
+    every command this package ships."""
     import importlib
 
     for command, (module_name, description) in cli.COMMANDS.items():
         assert description
-        if command not in _LOCAL_COMMANDS:
-            continue
         module = importlib.import_module(module_name)
         assert callable(module.main), f"{command} -> {module_name}.main is not callable"
 
 
-@pytest.mark.parametrize(
-    "command", [c for c in cli.COMMANDS if c not in _LOCAL_COMMANDS]
-)
-def test_pro_only_commands_report_unavailable(command, capsys):
-    """A cicaid-pro command run without cicaid-pro installed reports a
-    clear pointer instead of a raw ModuleNotFoundError traceback."""
-    assert cli.main([command]) == 2
-    captured = capsys.readouterr()
-    assert "cicaid-pro" in captured.err
-    assert command in captured.err
+def test_discover_commands_with_nothing_installed_matches_own_commands():
+    """In this package's own test env (no extension installed), discovery
+    returns exactly this package's own commands -- no cicaid-pro commands
+    leak in just because their names are known elsewhere in the codebase."""
+    assert cli.discover_commands() == cli.COMMANDS
+
+
+def test_discover_commands_merges_installed_extensions(monkeypatch):
+    """Commands an installed extension registers under the "cicaid.commands"
+    entry-point group are merged in, with a description taken from the
+    target module's docstring -- this package never hardcodes an
+    extension's command names."""
+
+    class FakeEntryPoint:
+        name = "fake-command"
+        value = "fake_extension_module:main"
+
+    class FakeModule:
+        __doc__ = "Do a fake thing.\n\nMore details here."
+
+    def fake_entry_points(*, group):
+        assert group == cli.ENTRY_POINT_GROUP
+        return [FakeEntryPoint()]
+
+    def fake_import_module(name):
+        assert name == "fake_extension_module"
+        return FakeModule()
+
+    monkeypatch.setattr(cli.importlib.metadata, "entry_points", fake_entry_points)
+    monkeypatch.setattr(cli.importlib, "import_module", fake_import_module)
+
+    commands = cli.discover_commands()
+    assert commands["fake-command"] == ("fake_extension_module", "Do a fake thing")
+    assert commands["sync-issues"] == cli.COMMANDS["sync-issues"]
+
+
+def test_discover_commands_own_commands_win_on_name_collision(monkeypatch):
+    """An extension registering a name that collides with this package's own
+    command is ignored -- this package's own commands always take precedence."""
+
+    class FakeEntryPoint:
+        name = "sync-issues"
+        value = "some_other_module:main"
+
+    monkeypatch.setattr(
+        cli.importlib.metadata, "entry_points", lambda *, group: [FakeEntryPoint()]
+    )
+    assert cli.discover_commands()["sync-issues"] == cli.COMMANDS["sync-issues"]
 
 
 def test_no_args_prints_help(capsys):
@@ -52,7 +72,7 @@ def test_no_args_prints_help(capsys):
     assert "Usage: cicaid <command|number>" in out
     assert "(or: cicaid 1)" in out
     assert "sync-issues (1)" in out
-    assert "run-ci-checks (9)" in out
+    assert "update-issue (9)" in out
 
 
 @pytest.mark.parametrize("flag", ["-h", "--help", "help"])
@@ -71,8 +91,8 @@ def test_help_command_dispatches_target_help(monkeypatch):
             raise SystemExit(0)
 
     monkeypatch.setattr(cli.importlib, "import_module", lambda name: FakeModule)
-    assert cli.main(["help", "create-issue"]) == 0
-    assert calls == [["create-issue", "--help"]]
+    assert cli.main(["help", "sync-issues"]) == 0
+    assert calls == [["sync-issues", "--help"]]
 
 
 def test_help_command_accepts_numeric_shortcut(monkeypatch):
@@ -93,10 +113,11 @@ def test_help_unknown_command_errors(capsys):
     assert cli.main(["help", "not-a-real-command"]) == 1
     captured = capsys.readouterr()
     assert "Unknown command: 'not-a-real-command'" in captured.err
+    assert "extension package" in captured.err
 
 
 def test_help_rejects_extra_arguments(capsys):
-    assert cli.main(["help", "create-issue", "extra"]) == 1
+    assert cli.main(["help", "sync-issues", "extra"]) == 1
     assert "Usage: cicaid help <command|number>" in capsys.readouterr().err
 
 
@@ -157,7 +178,7 @@ def test_none_return_from_target_treated_as_success(monkeypatch):
 
 
 def test_numeric_shortcut_dispatches_to_correct_command(monkeypatch, capsys):
-    """`cicaid 1` should dispatch to sync-issues, `cicaid 15` to dependabot-auto-merge."""
+    """`cicaid 1` should dispatch to sync-issues, `cicaid 9` to update-issue."""
     resolved: list[str] = []
 
     class FakeModule:
@@ -173,13 +194,13 @@ def test_numeric_shortcut_dispatches_to_correct_command(monkeypatch, capsys):
     assert resolved[-1] == "sync-issues"
     assert "Running: cicaid sync-issues" in capsys.readouterr().out
 
-    # Last command (dependabot-auto-merge)
-    assert cli.main(["15"]) == 0
-    assert resolved[-1] == "dependabot-auto-merge"
-    assert "Running: cicaid dependabot-auto-merge" in capsys.readouterr().out
-
-    # Middle command (run-ci-checks, position 9)
+    # Last command (update-issue)
     assert cli.main(["9"]) == 0
+    assert resolved[-1] == "update-issue"
+    assert "Running: cicaid update-issue" in capsys.readouterr().out
+
+    # Middle command (run-ci-checks, position 4)
+    assert cli.main(["4"]) == 0
     assert resolved[-1] == "run-ci-checks"
     assert "Running: cicaid run-ci-checks" in capsys.readouterr().out
 
@@ -194,7 +215,7 @@ def test_numeric_shortcut_passes_remaining_args(monkeypatch, capsys):
             return 0
 
     monkeypatch.setattr(cli.importlib, "import_module", lambda name: FakeModule)
-    assert cli.main(["6", "123"]) == 0
+    assert cli.main(["2", "123"]) == 0
     assert calls == [["work-on-issue", "123"]]
     assert "Running: cicaid work-on-issue" in capsys.readouterr().out
 
@@ -206,7 +227,7 @@ def test_numeric_shortcut_help_displays_numbers(capsys):
     assert "Usage: cicaid <command|number>" in out
     assert "(or: cicaid 1)" in out
     assert "sync-issues (1)" in out
-    assert "publish-pr (12)" in out
+    assert "publish-pr (5)" in out
 
 
 def test_numeric_shortcut_out_of_range_is_unknown(capsys):
@@ -218,14 +239,16 @@ def test_numeric_shortcut_out_of_range_is_unknown(capsys):
 
 def test_numeric_shortcuts_cover_all_commands():
     """Every command should have exactly one numeric shortcut."""
-    assert len(cli.NUMERIC_SHORTCUTS) == len(cli.COMMANDS)
+    commands = cli.discover_commands()
+    shortcuts = cli._numeric_shortcuts(commands)
+    assert len(shortcuts) == len(commands)
     # All shortcuts should be 1..N and map to valid commands.
-    for num_str, name in cli.NUMERIC_SHORTCUTS.items():
-        assert 1 <= int(num_str) <= len(cli.COMMANDS)
-        assert name in cli.COMMANDS
+    for num_str, name in shortcuts.items():
+        assert 1 <= int(num_str) <= len(commands)
+        assert name in commands
     # Every command should be covered.
-    covered = set(cli.NUMERIC_SHORTCUTS.values())
-    assert covered == set(cli.COMMANDS)
+    covered = set(shortcuts.values())
+    assert covered == set(commands)
 
 
 @pytest.mark.parametrize("command", ["sync-issues"])
