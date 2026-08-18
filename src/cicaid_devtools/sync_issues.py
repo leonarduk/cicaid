@@ -16,8 +16,13 @@ from github_repo import get_repo_info, get_repo_root  # noqa: E402
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-REPO_OWNER, REPO_NAME = get_repo_info()
-ISSUES_DIR = Path(get_repo_root()) / "issues"
+# Resolved lazily in main(), after argparse has had a chance to handle
+# --help -- get_repo_info()/get_repo_root() shell out to git and fail
+# outside a repo with an origin remote, which must not happen just from
+# asking for --help.
+REPO_OWNER: str | None = None
+REPO_NAME: str | None = None
+ISSUES_DIR: Path | None = None
 GITHUB_API_BASE = "https://api.github.com"
 
 
@@ -144,6 +149,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.parse_known_args()
+
+    global REPO_OWNER, REPO_NAME, ISSUES_DIR
+    REPO_OWNER, REPO_NAME = get_repo_info()
+    ISSUES_DIR = Path(get_repo_root()) / "issues"
 
     token = get_github_token()
     ISSUES_DIR.mkdir(exist_ok=True)
