@@ -25,31 +25,41 @@ def test_discover_commands_with_nothing_installed_matches_own_commands():
 
 def test_discover_commands_merges_installed_extensions(monkeypatch):
     """Commands an installed extension registers under the "cicaid.commands"
-    entry-point group are merged in, with a description taken from the
-    target module's docstring -- this package never hardcodes an
-    extension's command names."""
+    entry-point group are merged in -- this package never hardcodes an
+    extension's command names. Description extraction is covered separately
+    by the _describe tests below."""
 
     class FakeEntryPoint:
         name = "fake-command"
         value = "fake_extension_module:main"
 
-    class FakeModule:
-        __doc__ = "Do a fake thing.\n\nMore details here."
-
     def fake_entry_points(*, group):
         assert group == cli.ENTRY_POINT_GROUP
         return [FakeEntryPoint()]
 
-    def fake_import_module(name):
-        assert name == "fake_extension_module"
-        return FakeModule()
-
     monkeypatch.setattr(cli.importlib.metadata, "entry_points", fake_entry_points)
-    monkeypatch.setattr(cli.importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(cli, "_describe", lambda module_name: f"described {module_name}")
 
     commands = cli.discover_commands()
-    assert commands["fake-command"] == ("fake_extension_module", "Do a fake thing")
+    assert commands["fake-command"] == ("fake_extension_module", "described fake_extension_module")
     assert commands["sync-issues"] == cli.COMMANDS["sync-issues"]
+
+
+def test_describe_reads_docstring_without_executing_module(tmp_path, monkeypatch):
+    """_describe must not execute the target module -- some command modules
+    do real work (e.g. a live git-remote lookup) at import time, which must
+    not happen just from building the help menu."""
+    module_path = tmp_path / "side_effecting_module.py"
+    module_path.write_text(
+        '"""Do a risky thing.\n\nMore details.\n"""\n\nraise RuntimeError("should never execute")\n',
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    assert cli._describe("side_effecting_module") == "Do a risky thing"
+
+
+def test_describe_returns_empty_for_missing_module():
+    assert cli._describe("no_such_module_at_all_xyz") == ""
 
 
 def test_discover_commands_own_commands_win_on_name_collision(monkeypatch):

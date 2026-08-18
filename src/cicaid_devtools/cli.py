@@ -13,9 +13,12 @@ because an extension added a command.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import importlib.metadata
+import importlib.util
 import sys
+from pathlib import Path
 
 from cicaid_devtools.version_checker import check_and_prompt
 
@@ -47,15 +50,28 @@ COMMANDS: dict[str, tuple[str, str]] = {
 
 
 def _describe(module_name: str) -> str:
-    """First line of ``module_name``'s docstring, or "" if it can't be imported."""
+    """First line of ``module_name``'s docstring, read without executing it.
+
+    Some command modules do real work at import time (e.g. a live git-remote
+    lookup) -- building the help menu must not trigger that, so the source is
+    parsed with ``ast`` instead of actually importing the module.
+    """
     try:
-        module = importlib.import_module(module_name)
-    except ImportError:
+        spec = importlib.util.find_spec(module_name)
+    except (ImportError, ValueError):
         return ""
-    doc = (module.__doc__ or "").strip()
+    if spec is None or spec.origin is None:
+        return ""
+    try:
+        source = Path(spec.origin).read_text(encoding="utf-8")
+        doc = ast.get_docstring(ast.parse(source, filename=spec.origin))
+    except (OSError, SyntaxError):
+        return ""
+    if not doc:
+        return ""
     # Match this package's own descriptions, which are terse phrases with no
     # trailing period.
-    return doc.splitlines()[0].rstrip(".") if doc else ""
+    return doc.strip().splitlines()[0].rstrip(".")
 
 
 def discover_commands() -> dict[str, tuple[str, str]]:
