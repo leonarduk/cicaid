@@ -82,7 +82,7 @@ def test_no_args_prints_help(capsys):
     assert "Usage: cicaid <command|number>" in out
     assert "(or: cicaid 1)" in out
     assert "sync-issues (1)" in out
-    assert "update-issue (9)" in out
+    assert "update-issue (8)" in out
 
 
 @pytest.mark.parametrize("flag", ["-h", "--help", "help"])
@@ -188,7 +188,7 @@ def test_none_return_from_target_treated_as_success(monkeypatch):
 
 
 def test_numeric_shortcut_dispatches_to_correct_command(monkeypatch, capsys):
-    """`cicaid 1` should dispatch to sync-issues, `cicaid 9` to update-issue."""
+    """`cicaid 1` should dispatch to sync-issues, `cicaid 8` to update-issue."""
     resolved: list[str] = []
 
     class FakeModule:
@@ -205,7 +205,7 @@ def test_numeric_shortcut_dispatches_to_correct_command(monkeypatch, capsys):
     assert "Running: cicaid sync-issues" in capsys.readouterr().out
 
     # Last command (update-issue)
-    assert cli.main(["9"]) == 0
+    assert cli.main(["8"]) == 0
     assert resolved[-1] == "update-issue"
     assert "Running: cicaid update-issue" in capsys.readouterr().out
 

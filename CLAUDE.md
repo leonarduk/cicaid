@@ -8,13 +8,15 @@ concise agent-facing companion.
 
 `cicaid` is the free, public shell of the `cicaid-devtools` package: issue
 sync, branch/checkout-for-issue, checkout-for-PR, local CI checks, link PR to
-issue, auto-merge green Dependabot PRs, and `setup-review-actions` (scaffolds
-AI-review GitHub Actions into a target repo).
+issue, and auto-merge green Dependabot PRs.
 
 The LLM-backed commands (`triage-issues`, `review-issue`, `create-issue`,
 `local-review`, `pr-review`, `commit-and-push`, `implement-issue-with-aider`,
-`clear-ai-slop-issues`) live in the sibling private repo **`cicaid-pro`**
-(`../cicaid-pro`), not here. If asked to add/fix an LLM-review or triage
+`clear-ai-slop-issues`) and `setup-review-actions` (scaffolds AI-review GitHub
+Actions into a target repo — moved here in #477 since it only scaffolds
+cicaid-pro's review logic, which never runs without cicaid-pro installed)
+live in the sibling private repo **`cicaid-pro`** (`../cicaid-pro`), not
+here. If asked to add/fix an LLM-review, triage, or review-scaffolding
 feature, that's almost certainly the other repo — see
 `../cicaid-pro/CLAUDE.md` and `../CLAUDE.md` for the workspace layout.
 
@@ -54,9 +56,6 @@ pytest
   (`<!-- cicaid-version:start -->` etc.) are updated automatically by the
   release workflow when a `v*` tag is pushed — don't hand-edit those blocks,
   they'll be overwritten on the next release anyway.
-- `setup-review-actions` makes **no LLM calls itself**; it only scaffolds
-  workflow YAML into a *target* repo that later calls into `cicaid-pro`'s
-  review logic using that target repo's own API-key secrets.
 - `scripts/bump_readme_version.py`, `scripts/bump_wiki_version.py`,
   `scripts/version_bump.py` support the release workflow — check there before
   assuming a version/README sync issue needs a manual fix.

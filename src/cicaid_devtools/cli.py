@@ -38,10 +38,6 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "cicaid_devtools.dependabot_auto_merge",
         "Auto-merge green Dependabot PRs",
     ),
-    "setup-review-actions": (
-        "cicaid_devtools.setup_review_actions",
-        "Scaffold AI review GitHub Actions into a repo (branch + PR + issue)",
-    ),
     "update-issue": (
         "cicaid_devtools.update_issue",
         "Update a GitHub issue from a changed .issue-<id>.md file",

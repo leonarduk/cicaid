@@ -35,7 +35,6 @@ update-issue = "cicaid_devtools.update_issue:main"
 work-on-pr = "cicaid_devtools.work_on_pr:main"
 run-ci-checks = "cicaid_devtools.run_ci_checks:main"
 dependabot-auto-merge = "cicaid_devtools.dependabot_auto_merge:main"
-setup-review-actions = "cicaid_devtools.setup_review_actions:main"
 add-issue-to-pr = "cicaid_devtools.add_issue_to_pr:main"
 publish-pr = "cicaid_devtools.lib.publish_pr:main"
 
@@ -65,9 +64,6 @@ select = [
     "B",  # flake8-bugbear
     "UP", # pyupgrade
 ]
-
-[tool.ruff.lint.per-file-ignores]
-"src/cicaid_devtools/setup_review_actions.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
