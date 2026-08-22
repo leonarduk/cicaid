@@ -18,12 +18,14 @@ from __future__ import annotations
 import argparse
 import difflib
 import logging
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from github_issues import GitHubIssuesError, get_issue, update_issue  # noqa: E402
 from github_repo import get_repo_info  # noqa: E402
+from interactive import NON_INTERACTIVE_ENV  # noqa: E402
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -128,6 +130,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not args.yes:
+        if os.environ.get(NON_INTERACTIVE_ENV):
+            logger.error(
+                "Not running interactively (%s is set); pass --yes to update the issue.",
+                NON_INTERACTIVE_ENV,
+            )
+            return 1
         try:
             confirm = input("Update this issue on GitHub? [Y/n] ").strip().lower()
         except EOFError:

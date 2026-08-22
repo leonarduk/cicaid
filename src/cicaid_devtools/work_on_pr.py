@@ -13,6 +13,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from github_repo import get_repo_info  # noqa: E402
+from interactive import is_interactive  # noqa: E402
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -58,6 +59,10 @@ def prompt_for_pr(prs: list[dict]) -> dict:
     """List open PRs and prompt the user to pick one."""
     if not prs:
         logger.error("No open pull requests found.")
+        sys.exit(1)
+
+    if not is_interactive():
+        logger.error("No PR number given and not running interactively; supply a PR number.")
         sys.exit(1)
 
     logger.info("Open pull requests:")

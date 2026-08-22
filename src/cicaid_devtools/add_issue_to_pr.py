@@ -173,6 +173,63 @@ def build_issue_body(pr: PullRequest) -> str:
     return "\n".join(parts)
 
 
+def fetch_repo_labels(owner: str, repo: str) -> list[str] | None:
+    """List label names that exist on the target repo. Returns None if the query fails."""
+    result = run_gh(
+        [
+            "label",
+            "list",
+            "--repo",
+            f"{owner}/{repo}",
+            "--json",
+            "name",
+            "--limit",
+            "1000",
+        ]
+    )
+    if result.returncode != 0:
+        logger.warning(
+            f"WARNING: could not list labels for {owner}/{repo}: {result.stderr.strip()}"
+        )
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        logger.warning("WARNING: gh label list returned non-JSON output; not filtering labels")
+        return None
+    if not isinstance(data, list):
+        logger.warning(
+            "WARNING: gh label list returned unexpected JSON shape; not filtering labels"
+        )
+        return None
+    return [item["name"] for item in data]
+
+
+def filter_existing_labels(owner: str, repo: str, labels: list[str]) -> list[str]:
+    """Drop labels that don't exist on the target repo, warning about each one dropped.
+
+    Matches case-insensitively (like `gh issue create --label` itself) and keeps
+    the target repo's canonical spelling. If the repo's label list can't be
+    fetched, returns `labels` unfiltered so the original (pre-fix) behaviour is
+    the fallback.
+    """
+    existing = fetch_repo_labels(owner, repo)
+    if existing is None:
+        return labels
+
+    existing_by_key = {name.casefold(): name for name in existing}
+    kept = []
+    for label in labels:
+        canonical = existing_by_key.get(label.casefold())
+        if canonical is not None:
+            kept.append(canonical)
+        else:
+            logger.warning(
+                f"WARNING: label '{label}' does not exist on {owner}/{repo}; dropping it"
+            )
+    return kept
+
+
 def create_issue(owner: str, repo: str, title: str, body: str, labels: list[str]) -> int | None:
     """Create an issue via the `gh` CLI. Returns the new issue number, or None on failure."""
     body_path = None
@@ -345,6 +402,9 @@ def main() -> int:
             logger.error(f"ERROR: PR #{args.pr} not found among open PRs")
             return 1
     logger.info(f"INFO: {len(prs)} open PR(s) to check")
+
+    if labels:
+        labels = filter_existing_labels(owner, repo, labels)
 
     if dry_run:
         logger.info(

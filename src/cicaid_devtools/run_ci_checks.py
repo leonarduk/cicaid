@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from github_repo import get_repo_root  # noqa: E402
+from interactive import is_interactive  # noqa: E402
 
 CONFIG_FILENAME = ".cicaid-checks.toml"
 
@@ -192,7 +193,7 @@ def select_checks(args: argparse.Namespace, checks: tuple[Check, ...]) -> list[C
             )
         selected = set(args.check)
         return [check for check in checks if check.name in selected]
-    if not sys.stdin.isatty():
+    if not is_interactive(require_stdout=False):
         raise SystemExit("No check selected. Use --check NAME, --all, or --list.")
     return prompt_for_checks(checks)
 
