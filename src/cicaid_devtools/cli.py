@@ -46,6 +46,10 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "cicaid_devtools.update_prs",
         "Update open PRs that are behind their base branch",
     ),
+    "graphify-repos": (
+        "cicaid_devtools.graphify_repos",
+        "Run graphify across a configured list of repos",
+    ),
 }
 
 
@@ -140,9 +144,7 @@ def _resolve_command(command: str, numeric_shortcuts: dict[str, str]) -> str:
     return numeric_shortcuts.get(command, command)
 
 
-_UNKNOWN_COMMAND_SUFFIX = (
-    "an installed extension package (e.g. cicaid-pro) may provide it"
-)
+_UNKNOWN_COMMAND_SUFFIX = "an installed extension package (e.g. cicaid-pro) may provide it"
 
 
 def _dispatch(command: str, args: list[str], commands: dict[str, tuple[str, str]]) -> int:
