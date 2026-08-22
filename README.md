@@ -63,6 +63,42 @@ an unconfirmed issue update) exit with a clear error instead, so an AI
 driver (Claude Code, aider, ...) can rely on one env var rather than a
 different flag per command.
 
+## Knowledge-graph orchestration across repos
+
+`graphify-repos` runs [graphify](https://pypi.org/project/graphifyy/) (a
+codebase knowledge-graph generator, installed separately with `pip install
+graphifyy`) across a configured list of repos and collects their output into
+one combined directory. List the repos in a `.cicaid-graphify.toml` file:
+
+```toml
+[[repos]]
+name = "allotmint"
+url = "https://github.com/leonarduk/allotmint"
+extract = true          # ask for full semantic extraction, if an API key is set
+
+[[repos]]
+name = "cicaid"
+url = "https://github.com/leonarduk/cicaid"
+```
+
+```bash
+cicaid graphify-repos --all         # every repo in the config
+cicaid graphify-repos --repo cicaid # just one
+cicaid graphify-repos --all --dry-run  # show what would run, without touching anything
+```
+
+## MCP server
+
+`cicaid-mcp` exposes every discovered command (this repo's own, plus any
+installed extension's, e.g. cicaid-pro) as an MCP tool, so MCP-capable
+clients can call them directly instead of shelling out. Requires the
+optional `mcp` extra:
+
+```bash
+pip install "cicaid-devtools[mcp]"
+cicaid-mcp
+```
+
 ## Access to cicaid-pro
 
 The LLM review/triage engine is the part of cicaid that's actually hard to

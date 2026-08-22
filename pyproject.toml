@@ -25,6 +25,10 @@ test = [
     "pytest~=9.0.3",
     "pytest-cov~=7.1.0",
     "pyyaml>=6.0,<7",
+    "fastmcp>=2.0,<3",  # so CI exercises mcp_server.py; real installs opt in via [mcp]
+]
+mcp = [
+    "fastmcp>=2.0,<3",
 ]
 
 [project.scripts]
@@ -38,6 +42,8 @@ dependabot-auto-merge = "cicaid_devtools.dependabot_auto_merge:main"
 add-issue-to-pr = "cicaid_devtools.add_issue_to_pr:main"
 publish-pr = "cicaid_devtools.lib.publish_pr:main"
 update-prs = "cicaid_devtools.update_prs:main"
+graphify-repos = "cicaid_devtools.graphify_repos:main"
+cicaid-mcp = "cicaid_devtools.mcp_server:main"
 
 [tool.setuptools_scm]
 fallback_version = "0.1.0"
