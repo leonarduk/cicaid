@@ -14,12 +14,17 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 import requests
 
 logger = logging.getLogger(__name__)
 
 GITHUB_API_BASE = "https://api.github.com"
+
+MAX_RATE_LIMIT_RETRIES = 4
+_INITIAL_BACKOFF_SECONDS = 1
+_MAX_RETRY_AFTER_SECONDS = 120
 
 
 def get_github_token() -> str:
@@ -43,6 +48,24 @@ def get_github_token() -> str:
     sys.exit(1)
 
 
+def _rate_limit_delay(resp: requests.Response, attempt: int) -> float | None:
+    """Return the backoff delay for a rate-limited response, or None if it
+    isn't one (403 without a fully-exhausted rate limit, anything else)."""
+    if resp.status_code == 429 or (
+        resp.status_code == 403 and resp.headers.get("X-RateLimit-Remaining") == "0"
+    ):
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after is not None:
+            try:
+                delay = float(retry_after)
+            except ValueError:
+                delay = None
+            if delay is not None and delay >= 0:
+                return min(delay, _MAX_RETRY_AFTER_SECONDS)
+        return _INITIAL_BACKOFF_SECONDS * (2**attempt)
+    return None
+
+
 def create_issue_via_api(
     owner: str,
     repo: str,
@@ -51,7 +74,13 @@ def create_issue_via_api(
     labels: list[str],
     token: str,
 ) -> str | None:
-    """Create a GitHub issue via the REST API.  Returns the HTML URL on success."""
+    """Create a GitHub issue via the REST API.  Returns the HTML URL on success.
+
+    Retries with exponential backoff on a rate-limited response (HTTP 429, or
+    403 with ``X-RateLimit-Remaining: 0``), honoring ``Retry-After`` when
+    present. Any other failure (including a 403 that isn't a rate limit,
+    e.g. a permissions error) is not retried.
+    """
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/issues"
     headers = {
         "Accept": "application/vnd.github.v3+json",
@@ -61,14 +90,33 @@ def create_issue_via_api(
     if labels:
         payload["labels"] = labels
 
-    try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("html_url")
-    except requests.RequestException as exc:
-        logger.error("API request failed: %s", exc)
-        return None
+    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=15)
+        except requests.RequestException as exc:
+            logger.error("API request failed: %s", exc)
+            return None
+
+        delay = _rate_limit_delay(resp, attempt)
+        if delay is not None and attempt < MAX_RATE_LIMIT_RETRIES:
+            logger.warning(
+                "GitHub API rate limit hit (status %d); retrying in %.1fs (attempt %d/%d)",
+                resp.status_code,
+                delay,
+                attempt + 1,
+                MAX_RATE_LIMIT_RETRIES,
+            )
+            time.sleep(delay)
+            continue
+
+        try:
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.error("API request failed: %s", exc)
+            return None
+        return resp.json().get("html_url")
+
+    return None
 
 
 def create_issue_via_gh(

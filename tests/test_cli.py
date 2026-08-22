@@ -45,6 +45,41 @@ def test_discover_commands_merges_installed_extensions(monkeypatch):
     assert commands["sync-issues"] == cli.COMMANDS["sync-issues"]
 
 
+def test_print_help_marks_extension_commands_with_their_distribution(capsys, monkeypatch):
+    class FakeDist:
+        name = "cicaid-devtools-pro"
+
+    class FakeEntryPoint:
+        name = "fake-command"
+        value = "fake_extension_module:main"
+        dist = FakeDist()
+
+    monkeypatch.setattr(
+        cli.importlib.metadata, "entry_points", lambda *, group: [FakeEntryPoint()]
+    )
+    commands = {**cli.COMMANDS, "fake-command": ("fake_extension_module", "Does a thing")}
+
+    cli.print_help(commands)
+
+    lines = capsys.readouterr().out.splitlines()
+    fake_line = next(line for line in lines if "fake-command" in line)
+    own_line = next(line for line in lines if "sync-issues (1)" in line)
+
+    assert "[cicaid-devtools-pro]" in fake_line
+    assert "[cicaid-devtools-pro]" not in own_line  # this package's own commands are never marked
+    assert not any("cicaid-pro adds LLM-backed commands" in line for line in lines)
+
+
+def test_print_help_shows_footer_when_no_extensions_installed(capsys, monkeypatch):
+    monkeypatch.setattr(cli.importlib.metadata, "entry_points", lambda *, group: [])
+
+    cli.print_help(cli.COMMANDS)
+
+    out = capsys.readouterr().out
+    assert "cicaid-pro adds LLM-backed commands" in out
+    assert "https://github.com/leonarduk/cicaid-pro" in out
+
+
 def test_describe_reads_docstring_without_executing_module(tmp_path, monkeypatch):
     """_describe must not execute the target module -- some command modules
     do real work (e.g. a live git-remote lookup) at import time, which must

@@ -17,7 +17,7 @@ def test_get_main_branch_sha_uses_remote_head(monkeypatch, branch_name):
     )
     monkeypatch.setattr(work_on_issue.subprocess, "run", mock_run)
 
-    assert work_on_issue.get_main_branch_sha("owner", "repo") == sha
+    assert work_on_issue.get_main_branch_sha() == sha
     assert mock_run.call_args_list == [
         call(
             ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
@@ -49,7 +49,7 @@ def test_get_main_branch_sha_exits_when_remote_head_is_unavailable(
     monkeypatch.setattr(work_on_issue.subprocess, "run", lambda *args, **kwargs: symbolic_ref)
 
     with pytest.raises(SystemExit) as exc_info:
-        work_on_issue.get_main_branch_sha("owner", "repo")
+        work_on_issue.get_main_branch_sha()
 
     assert exc_info.value.code == 1
     assert "Failed to determine the default branch from origin/HEAD" in caplog.text
@@ -65,7 +65,7 @@ def test_get_main_branch_sha_exits_when_sha_lookup_fails(monkeypatch, caplog):
     monkeypatch.setattr(work_on_issue.subprocess, "run", mock_run)
 
     with pytest.raises(SystemExit) as exc_info:
-        work_on_issue.get_main_branch_sha("owner", "repo")
+        work_on_issue.get_main_branch_sha()
 
     assert exc_info.value.code == 1
     assert "Failed to get default branch SHA for origin/trunk" in caplog.text
