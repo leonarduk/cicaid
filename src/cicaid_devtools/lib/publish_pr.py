@@ -288,6 +288,10 @@ Brief explanation of what was changed or implemented.
 ## Why
 Why this change matters and what problem it solves.
 
+## Approach
+The reasoning behind the change: why this approach was chosen and what
+alternatives, if any, were rejected.
+
 ## Testing
 How the changes were tested.
 
@@ -351,6 +355,9 @@ def create_placeholder_pr_body(issue_id: int, issue_title: str, issue_body: str)
 
 ## Why
 {why}
+
+## Approach
+<!-- Why this approach was chosen and what alternatives, if any, were rejected -->
 
 ## Testing
 <!-- How was this tested? -->

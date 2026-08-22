@@ -79,7 +79,7 @@ def test_placeholder_body_does_not_leak_issue_headings():
 
     # Exactly one of each standard section, in order -- no duplicates.
     headings = [line for line in body.splitlines() if line.startswith("## ")]
-    assert headings == ["## What", "## Why", "## Testing", "## Checklist"]
+    assert headings == ["## What", "## Why", "## Approach", "## Testing", "## Checklist"]
 
     # The issue's own heading lines must not appear as nested sections.
     assert body.count("## What") == 1
@@ -102,7 +102,7 @@ def test_placeholder_body_falls_back_to_comment_without_issue_body():
         assert "<!-- Explain why this change matters -->" in body
         assert "Closes #1" in body
         headings = [line for line in body.splitlines() if line.startswith("## ")]
-        assert headings == ["## What", "## Why", "## Testing", "## Checklist"]
+        assert headings == ["## What", "## Why", "## Approach", "## Testing", "## Checklist"]
 
 
 def test_fetch_issue_uses_authenticated_gh_api():

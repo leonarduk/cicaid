@@ -47,3 +47,41 @@ def test_update_pr_body_handles_missing_body() -> None:
 
     with patch.object(add_issue_to_pr, "run_gh", side_effect=successful_api_call):
         assert add_issue_to_pr.update_pr_body("example", "project", pr, 99)
+
+
+def test_filter_existing_labels_drops_missing_labels() -> None:
+    listing = subprocess.CompletedProcess(
+        ["gh", "label", "list"],
+        returncode=0,
+        stdout=json.dumps([{"name": "bug"}, {"name": "documentation"}]),
+        stderr="",
+    )
+
+    with patch.object(add_issue_to_pr, "run_gh", return_value=listing):
+        result = add_issue_to_pr.filter_existing_labels(
+            "example", "project", ["bug", "Medium Value"]
+        )
+
+    assert result == ["bug"]
+
+
+def test_filter_existing_labels_falls_back_when_query_fails() -> None:
+    failure = subprocess.CompletedProcess(
+        ["gh", "label", "list"], returncode=1, stdout="", stderr="not found"
+    )
+
+    with patch.object(add_issue_to_pr, "run_gh", return_value=failure):
+        result = add_issue_to_pr.filter_existing_labels(
+            "example", "project", ["bug", "Medium Value"]
+        )
+
+    assert result == ["bug", "Medium Value"]
+
+
+def test_fetch_repo_labels_handles_bad_json() -> None:
+    bad = subprocess.CompletedProcess(
+        ["gh", "label", "list"], returncode=0, stdout="not json", stderr=""
+    )
+
+    with patch.object(add_issue_to_pr, "run_gh", return_value=bad):
+        assert add_issue_to_pr.fetch_repo_labels("example", "project") is None

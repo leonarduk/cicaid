@@ -37,6 +37,7 @@ run-ci-checks = "cicaid_devtools.run_ci_checks:main"
 dependabot-auto-merge = "cicaid_devtools.dependabot_auto_merge:main"
 add-issue-to-pr = "cicaid_devtools.add_issue_to_pr:main"
 publish-pr = "cicaid_devtools.lib.publish_pr:main"
+update-prs = "cicaid_devtools.update_prs:main"
 
 [tool.setuptools_scm]
 fallback_version = "0.1.0"
