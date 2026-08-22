@@ -85,6 +85,21 @@ def test_main_yes_skips_confirmation(tmp_path, monkeypatch):
     assert calls == [(REPO, 367, "New title", "## What\n\nNew body")]
 
 
+def test_main_non_interactive_env_skips_prompt_and_fails(tmp_path, monkeypatch):
+    _write_issue_file(tmp_path, 367, "New title", "## What\n\nNew body")
+    monkeypatch.chdir(tmp_path)
+    calls = _patch_github(monkeypatch, _issue())
+    monkeypatch.setenv("CICAID_NON_INTERACTIVE", "1")
+
+    def fail_input(prompt=""):
+        raise AssertionError("input() must not be called when CICAID_NON_INTERACTIVE is set")
+
+    monkeypatch.setattr("builtins.input", fail_input)
+
+    assert main(["367"]) == 1
+    assert calls == []
+
+
 def test_main_declines_confirmation(tmp_path, monkeypatch, capsys):
     _write_issue_file(tmp_path, 367, "New title", "## What\n\nNew body")
     monkeypatch.chdir(tmp_path)

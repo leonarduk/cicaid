@@ -42,7 +42,10 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "cicaid_devtools.update_issue",
         "Update a GitHub issue from a changed .issue-<id>.md file",
     ),
-    "update-prs": ("cicaid_devtools.update_prs", "Update open PRs that are behind their base branch"),
+    "update-prs": (
+        "cicaid_devtools.update_prs",
+        "Update open PRs that are behind their base branch",
+    ),
 }
 
 

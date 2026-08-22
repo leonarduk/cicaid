@@ -3,15 +3,25 @@
 Open PRs drift behind their base branch (usually `main`) over time, which
 lets CI results go stale and can block merges once branch protection
 requires an up-to-date branch. This script lists open PRs, finds the ones
-GitHub reports as behind, and updates their branch via `gh pr update-branch`
-(optionally with `--rebase` instead of the default merge commit).
+whose head is actually behind their base, and updates their branch via
+`gh pr update-branch` (optionally with `--rebase` instead of the default
+merge commit).
+
+`gh pr list`'s `mergeStateStatus` only reports "behind" when the base
+branch's protection rule requires branches to be up to date before
+merging -- on a repo without that rule, a PR dozens of commits behind
+`main` reports "clean"/"unstable" instead, which would make this command
+a no-op on most repos. So staleness is instead measured directly via
+`gh api repos/{owner}/{repo}/compare/{base}...{head}`'s `behind_by` count,
+which doesn't depend on branch protection at all. `mergeStateStatus` is
+only used to skip PRs with a real conflict ("dirty").
 
 Safety:
   - Defaults to dry-run: prints which PRs would be updated without doing
     anything. Pass --yes to actually update branches.
-  - Only ever acts on PRs GitHub reports as mergeable_state "behind" --
-    PRs that are already up to date, or have real conflicts ("dirty"),
-    are left alone.
+  - Never touches a PR GitHub reports as "dirty" (a real merge conflict).
+  - A PR whose behind-count can't be determined (the compare API call
+    failed) is skipped rather than guessed at.
 
 Requires the `gh` CLI to be authenticated with a token that can update
 pull request branches on the target repo. Defaults to operating on the
@@ -44,6 +54,8 @@ class PullRequest:
     number: int
     title: str
     author: str
+    base_ref: str
+    head_ref: str
     mergeable_state: str
 
 
@@ -66,7 +78,7 @@ def run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def fetch_open_prs(owner: str, repo: str) -> list[PullRequest]:
-    """List open PRs (author, mergeable state) for the given repo."""
+    """List open PRs (author, base/head refs, mergeable state) for the given repo."""
     result = run_gh(
         [
             "pr",
@@ -76,7 +88,7 @@ def fetch_open_prs(owner: str, repo: str) -> list[PullRequest]:
             "--state",
             "open",
             "--json",
-            "number,title,author,mergeStateStatus",
+            "number,title,author,baseRefName,headRefName,mergeStateStatus",
             "--limit",
             "200",
         ]
@@ -98,10 +110,34 @@ def fetch_open_prs(owner: str, repo: str) -> list[PullRequest]:
                 number=item["number"],
                 title=item["title"],
                 author=(item.get("author") or {}).get("login", ""),
+                base_ref=item.get("baseRefName", ""),
+                head_ref=item.get("headRefName", ""),
                 mergeable_state=(item.get("mergeStateStatus") or "").lower(),
             )
         )
     return prs
+
+
+def fetch_behind_by(owner: str, repo: str, base_ref: str, head_ref: str) -> int | None:
+    """Return how many commits `head_ref` is behind `base_ref`, or None if undetermined."""
+    result = run_gh(
+        [
+            "api",
+            f"repos/{owner}/{repo}/compare/{base_ref}...{head_ref}",
+            "--jq",
+            ".behind_by",
+        ]
+    )
+    if result.returncode != 0:
+        logger.warning(
+            f"WARNING: could not compare {base_ref}...{head_ref}: {result.stderr.strip()}"
+        )
+        return None
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        logger.warning(f"WARNING: unexpected compare output for {base_ref}...{head_ref}")
+        return None
 
 
 def update_branch(owner: str, repo: str, pr: PullRequest, dry_run: bool, rebase: bool) -> bool:
@@ -124,11 +160,18 @@ def update_branch(owner: str, repo: str, pr: PullRequest, dry_run: bool, rebase:
 
 def process_pr(owner: str, repo: str, pr: PullRequest, dry_run: bool, rebase: bool) -> bool:
     """Update a single PR's branch if it's behind. Returns False only on a failed update."""
-    if pr.mergeable_state != "behind":
-        logger.info(
-            f"SKIP: PR #{pr.number} ({pr.title}) -- mergeable_state is '{pr.mergeable_state}'"
-        )
+    if pr.mergeable_state == "dirty":
+        logger.info(f"SKIP: PR #{pr.number} ({pr.title}) -- has a real merge conflict")
         return True
+
+    behind_by = fetch_behind_by(owner, repo, pr.base_ref, pr.head_ref)
+    if behind_by is None:
+        logger.info(f"SKIP: PR #{pr.number} ({pr.title}) -- could not determine behind-count")
+        return True
+    if behind_by == 0:
+        logger.info(f"SKIP: PR #{pr.number} ({pr.title}) -- already up to date with {pr.base_ref}")
+        return True
+
     return update_branch(owner, repo, pr, dry_run, rebase)
 
 

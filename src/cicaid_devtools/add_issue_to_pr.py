@@ -184,7 +184,7 @@ def fetch_repo_labels(owner: str, repo: str) -> list[str] | None:
             "--json",
             "name",
             "--limit",
-            "200",
+            "1000",
         ]
     )
     if result.returncode != 0:
@@ -197,24 +197,32 @@ def fetch_repo_labels(owner: str, repo: str) -> list[str] | None:
     except json.JSONDecodeError:
         logger.warning("WARNING: gh label list returned non-JSON output; not filtering labels")
         return None
+    if not isinstance(data, list):
+        logger.warning(
+            "WARNING: gh label list returned unexpected JSON shape; not filtering labels"
+        )
+        return None
     return [item["name"] for item in data]
 
 
 def filter_existing_labels(owner: str, repo: str, labels: list[str]) -> list[str]:
     """Drop labels that don't exist on the target repo, warning about each one dropped.
 
-    If the repo's label list can't be fetched, returns `labels` unfiltered so the
-    original (pre-fix) behaviour is the fallback.
+    Matches case-insensitively (like `gh issue create --label` itself) and keeps
+    the target repo's canonical spelling. If the repo's label list can't be
+    fetched, returns `labels` unfiltered so the original (pre-fix) behaviour is
+    the fallback.
     """
     existing = fetch_repo_labels(owner, repo)
     if existing is None:
         return labels
 
-    existing_set = set(existing)
+    existing_by_key = {name.casefold(): name for name in existing}
     kept = []
     for label in labels:
-        if label in existing_set:
-            kept.append(label)
+        canonical = existing_by_key.get(label.casefold())
+        if canonical is not None:
+            kept.append(canonical)
         else:
             logger.warning(
                 f"WARNING: label '{label}' does not exist on {owner}/{repo}; dropping it"

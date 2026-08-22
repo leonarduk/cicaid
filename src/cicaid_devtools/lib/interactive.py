@@ -16,12 +16,18 @@ import sys
 NON_INTERACTIVE_ENV = "CICAID_NON_INTERACTIVE"
 
 
-def is_interactive() -> bool:
+def is_interactive(*, require_stdout: bool = True) -> bool:
     """Return False if prompting should be skipped.
 
-    True only when ``CICAID_NON_INTERACTIVE`` is unset/falsy AND both stdin
-    and stdout are attached to a TTY.
+    True only when ``CICAID_NON_INTERACTIVE`` is unset/falsy AND stdin is
+    attached to a TTY. By default stdout must also be a TTY, so piping a
+    command's output (`cicaid foo | tee log`) is treated the same as
+    running non-interactively; pass ``require_stdout=False`` for a menu
+    that only reads from stdin and writes its own prompt there too, so
+    piping just stdout doesn't unexpectedly disable it.
     """
     if os.environ.get(NON_INTERACTIVE_ENV):
         return False
-    return sys.stdin.isatty() and sys.stdout.isatty()
+    if require_stdout and not sys.stdout.isatty():
+        return False
+    return sys.stdin.isatty()

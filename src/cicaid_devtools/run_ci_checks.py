@@ -193,7 +193,7 @@ def select_checks(args: argparse.Namespace, checks: tuple[Check, ...]) -> list[C
             )
         selected = set(args.check)
         return [check for check in checks if check.name in selected]
-    if not is_interactive():
+    if not is_interactive(require_stdout=False):
         raise SystemExit("No check selected. Use --check NAME, --all, or --list.")
     return prompt_for_checks(checks)
 

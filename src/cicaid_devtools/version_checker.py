@@ -14,6 +14,8 @@ import requests
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from packaging.version import InvalidVersion, Version
 
+from cicaid_devtools.lib.interactive import NON_INTERACTIVE_ENV
+
 PACKAGE_NAME = "cicaid-devtools"
 LATEST_RELEASE_URL = "https://api.github.com/repos/leonarduk/cicaid/releases/latest"
 SKIP_UPDATE_ENV = "CICAID_SKIP_UPDATE_CHECK"
@@ -222,7 +224,11 @@ def _defer_windows_update(release: Release) -> bool:
 
 def check_and_prompt() -> None:
     """Offer an update in interactive sessions and restart after installing it."""
-    if os.environ.get(SKIP_UPDATE_ENV) or not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if (
+        os.environ.get(SKIP_UPDATE_ENV)
+        or os.environ.get(NON_INTERACTIVE_ENV)
+        or not (sys.stdin.isatty() and sys.stdout.isatty())
+    ):
         return
 
     release = available_update()

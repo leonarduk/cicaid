@@ -150,6 +150,16 @@ def test_check_does_nothing_when_not_interactive(monkeypatch):
     version_checker.check_and_prompt()
 
 
+def test_check_does_nothing_when_non_interactive_env_set(monkeypatch):
+    monkeypatch.setattr(version_checker.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(version_checker.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setenv("CICAID_NON_INTERACTIVE", "1")
+    monkeypatch.setattr(
+        version_checker, "available_update", lambda: (_ for _ in ()).throw(AssertionError())
+    )
+    version_checker.check_and_prompt()
+
+
 def test_check_prompts_and_ignores_update(monkeypatch):
     release = version_checker.Release("2.0.0", "https://example.test/new.whl")
     monkeypatch.setattr(version_checker.sys.stdin, "isatty", lambda: True)

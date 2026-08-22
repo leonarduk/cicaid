@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Not running interactively (%s is set); pass --yes to update the issue.",
                 NON_INTERACTIVE_ENV,
             )
-            return 0
+            return 1
         try:
             confirm = input("Update this issue on GitHub? [Y/n] ").strip().lower()
         except EOFError:

@@ -85,3 +85,27 @@ def test_fetch_repo_labels_handles_bad_json() -> None:
 
     with patch.object(add_issue_to_pr, "run_gh", return_value=bad):
         assert add_issue_to_pr.fetch_repo_labels("example", "project") is None
+
+
+def test_fetch_repo_labels_handles_unexpected_json_shape() -> None:
+    wrong_shape = subprocess.CompletedProcess(
+        ["gh", "label", "list"], returncode=0, stdout="null", stderr=""
+    )
+
+    with patch.object(add_issue_to_pr, "run_gh", return_value=wrong_shape):
+        assert add_issue_to_pr.fetch_repo_labels("example", "project") is None
+
+
+def test_filter_existing_labels_matches_case_insensitively() -> None:
+    listing = subprocess.CompletedProcess(
+        ["gh", "label", "list"],
+        returncode=0,
+        stdout=json.dumps([{"name": "medium value"}]),
+        stderr="",
+    )
+
+    with patch.object(add_issue_to_pr, "run_gh", return_value=listing):
+        result = add_issue_to_pr.filter_existing_labels("example", "project", ["Medium Value"])
+
+    # Keeps the repo's own canonical spelling rather than the requested one.
+    assert result == ["medium value"]
