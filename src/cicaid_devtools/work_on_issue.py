@@ -56,7 +56,7 @@ def fetch_issue(owner: str, repo: str, issue_id: int, token: str | None = None) 
     return resp.json()
 
 
-def get_main_branch_sha(owner: str, repo: str) -> str:
+def get_main_branch_sha() -> str:
     """Get the SHA of the branch referenced by the remote's HEAD."""
     remote_prefix = "refs/remotes/origin/"
     result = subprocess.run(

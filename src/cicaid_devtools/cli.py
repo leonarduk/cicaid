@@ -92,6 +92,23 @@ def discover_commands() -> dict[str, tuple[str, str]]:
     return commands
 
 
+def _extension_distributions() -> dict[str, str]:
+    """Command name -> providing distribution name, for non-COMMANDS entries.
+
+    Derived from entry-point metadata rather than a hardcoded pro-command
+    list, so this stays correct however many extension packages are
+    installed and whatever commands they register.
+    """
+    extensions = {}
+    for entry_point in importlib.metadata.entry_points(group=ENTRY_POINT_GROUP):
+        if entry_point.name in COMMANDS:
+            continue
+        dist = getattr(entry_point, "dist", None)
+        dist_name = dist.name if dist else "an extension"
+        extensions[entry_point.name] = dist_name
+    return extensions
+
+
 def _numeric_shortcuts(commands: dict[str, tuple[str, str]]) -> dict[str, str]:
     """Numeric shortcut -> command name, derived from insertion order (1-indexed)."""
     return {str(i): name for i, name in enumerate(commands, start=1)}
@@ -99,6 +116,7 @@ def _numeric_shortcuts(commands: dict[str, tuple[str, str]]) -> dict[str, str]:
 
 def print_help(commands: dict[str, tuple[str, str]]) -> None:
     """Print the command list, e.g. for `cicaid` with no arguments."""
+    extension_dists = _extension_distributions()
     print("Usage: cicaid <command|number> [args...]")
     print("       cicaid help <command|number>  (detailed command help)")
     print("       cicaid sync-issues         (or: cicaid 1) — sync GitHub issues")
@@ -107,7 +125,14 @@ def print_help(commands: dict[str, tuple[str, str]]) -> None:
     width = max(len(name) for name in commands)
     for i, (name, (_, description)) in enumerate(commands.items(), start=1):
         label = f"{name} ({i})"
-        print(f"  {label.ljust(width + 5)}  {description}")
+        suffix = f" [{extension_dists[name]}]" if name in extension_dists else ""
+        print(f"  {label.ljust(width + 5)}  {description}{suffix}")
+    if not extension_dists:
+        print(
+            "\ncicaid-pro adds LLM-backed commands (issue triage, PR review, "
+            "AI-assisted issue creation, ...) -- see "
+            "https://github.com/leonarduk/cicaid-pro"
+        )
 
 
 def _resolve_command(command: str, numeric_shortcuts: dict[str, str]) -> str:

@@ -37,6 +37,10 @@ def detect_repo_url() -> str:
     match = re.match(r"git@github\.com:([^/]+/[^/]+?)(?:\.git)?$", remote)
     if match:
         return f"https://github.com/{match.group(1)}"
+    # ssh://git@github.com/owner/repo.git and git://github.com/owner/repo.git
+    match = re.match(r"(?:ssh|git)://(?:[^@]+@)?github\.com/([^/]+/[^/]+?)(?:\.git)?$", remote)
+    if match:
+        return f"https://github.com/{match.group(1)}"
     # Keep HTTPS-style as-is (strip trailing .git)
     match = re.match(r"(https://github\.com/[^/]+/[^/]+?)(?:\.git)?$", remote)
     if match:
