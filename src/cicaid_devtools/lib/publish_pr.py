@@ -1,4 +1,5 @@
-"""CLI tool to publish a PR from the current branch with optional Ollama assistance."""
+"""CLI tool to publish a PR from the current branch with optional LLM assistance
+(Ollama or LM Studio)."""
 
 from __future__ import annotations
 import logging
@@ -278,9 +279,9 @@ def get_ollama_model() -> str:
     return "mistral"
 
 
-def generate_pr_body_with_ollama(issue_title: str, issue_body: str, model: str) -> Optional[str]:
-    """Use Ollama to generate PR body sections."""
-    prompt = f"""Given this GitHub issue, generate a concise PR description with the following sections:
+def _build_pr_body_prompt(issue_title: str, issue_body: str) -> str:
+    """Build the shared PR-body generation prompt used by every provider."""
+    return f"""Given this GitHub issue, generate a concise PR description with the following sections:
 
 ## What
 Brief explanation of what was changed or implemented.
@@ -303,6 +304,11 @@ Issue body:
 
 Generate only the sections above, no preamble."""
 
+
+def generate_pr_body_with_ollama(issue_title: str, issue_body: str, model: str) -> Optional[str]:
+    """Use Ollama to generate PR body sections."""
+    prompt = _build_pr_body_prompt(issue_title, issue_body)
+
     ollama_url = get_ollama_server_url()
     logger.info(f"Waiting for Ollama ({model}) to generate the PR body, this can take up to 60s...")
     try:
@@ -321,6 +327,101 @@ Generate only the sections above, no preamble."""
             return data.get("response", "").strip()
     except requests.RequestException as exc:
         logger.error(f"Ollama generation failed: {exc}")
+    return None
+
+
+def get_lmstudio_server_url(host: str = "localhost", port: int = 1234) -> str:
+    """Get LM Studio server url (base URL; the client appends `/v1/...`)."""
+    return f"http://{host}:{port}"
+
+
+def is_lmstudio_running(host: str = "localhost", port: int = 1234) -> bool:
+    """Check if LM Studio is running locally with at least one model loaded.
+
+    Requires a 200 from `/v1/models` AND a non-empty model list: an empty
+    server is "not usable" just like Ollama being down, so callers fall back
+    to the placeholder PR body rather than POSTing an empty model name.
+    """
+    try:
+        host_url = get_lmstudio_server_url(host=host, port=port)
+        resp = requests.get(f"{host_url}/v1/models", timeout=2)
+        if resp.status_code == 200:
+            data = resp.json()
+            return any(
+                isinstance(m, dict) and m.get("id") for m in data.get("data", [])
+            )
+    except requests.RequestException:
+        pass
+    return False
+
+
+def get_lmstudio_model() -> Optional[str]:
+    """Get LM Studio model name from env, or auto-detect from loaded models.
+
+    An explicit ``LMSTUDIO_MODEL`` wins; otherwise the first loaded model
+    from `/v1/models` is used (preferring coder models, mirroring
+    ``get_ollama_model``). Returns None -- never a made-up name -- when
+    nothing is loaded, so the caller falls back to the placeholder body.
+    """
+    model = os.getenv("LMSTUDIO_MODEL")
+    if model:
+        return model
+
+    try:
+        lmstudio_url = get_lmstudio_server_url()
+        resp = requests.get(f"{lmstudio_url}/v1/models", timeout=2)
+        if resp.status_code == 200:
+            data = resp.json()
+            models = [
+                m.get("id", "")
+                for m in data.get("data", [])
+                if isinstance(m, dict) and m.get("id")
+            ]
+            if models:
+                for name in models:
+                    if "coder" in name.lower():
+                        return name
+                return models[0]
+    except requests.RequestException:
+        pass
+    return None
+
+
+def generate_pr_body_with_lmstudio(issue_title: str, issue_body: str, model: str) -> Optional[str]:
+    """Use LM Studio (OpenAI-compatible chat-completions) to generate PR body sections.
+
+    Returns None on failure (mirroring ``generate_pr_body_with_ollama``) so
+    the caller falls back to the placeholder PR body.
+    """
+    if not model:
+        logger.warning("No LM Studio model provided; cannot generate PR body.")
+        return None
+
+    prompt = _build_pr_body_prompt(issue_title, issue_body)
+
+    lmstudio_url = get_lmstudio_server_url()
+    logger.info(f"Waiting for LM Studio ({model}) to generate the PR body, this can take up to 60s...")
+    try:
+        resp = requests.post(
+            f"{lmstudio_url}/v1/chat/completions",
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "temperature": 0.7,
+            },
+            timeout=60,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            choices = data.get("choices") or []
+            if choices:
+                message = choices[0].get("message") or {}
+                content = message.get("content")
+                if isinstance(content, str) and content.strip():
+                    return content.strip()
+    except requests.RequestException as exc:
+        logger.error(f"LM Studio generation failed: {exc}")
     return None
 
 
@@ -490,6 +591,16 @@ def check_gh_available() -> None:
         sys.exit(1)
 
 
+def get_llm_provider(provider_arg: Optional[str] = None) -> str:
+    """Resolve the PR-body LLM provider: --provider, else LLM_PROVIDER env, else 'ollama'."""
+    provider = provider_arg or os.getenv("LLM_PROVIDER", "ollama")
+    if provider not in ("ollama", "lmstudio"):
+        raise ValueError(
+            f"Unsupported LLM provider: {provider!r} (choose 'ollama' or 'lmstudio')"
+        )
+    return provider
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Publish a PR from the current branch")
     parser.add_argument(
@@ -506,14 +617,23 @@ def main() -> None:
         help="Specific files to commit (default: all changed files)",
     )
     parser.add_argument(
+        "--provider",
+        choices=["ollama", "lmstudio"],
+        default=None,
+        help="LLM provider for PR-body generation (default: LLM_PROVIDER env var or 'ollama')",
+    )
+    parser.add_argument(
         "--no-ollama",
         action="store_true",
-        help="Skip Ollama and use placeholder PR body",
+        help=(
+            "Skip LLM generation and use placeholder PR body "
+            "(flag name kept for backward compatibility; applies to any provider)"
+        ),
     )
     parser.add_argument(
         "--model",
         default=None,
-        help="Ollama model name (default: OLLAMA_MODEL env var or 'mistral')",
+        help="Model name (default: OLLAMA_MODEL/LMSTUDIO_MODEL env var or auto-detected)",
     )
     parser.add_argument(
         "--draft",
@@ -521,6 +641,13 @@ def main() -> None:
         help="Create the PR as a draft (not immediately visible/mergeable)",
     )
     args = parser.parse_args()
+
+    # Resolve the PR-body LLM provider (--provider > LLM_PROVIDER env > ollama).
+    try:
+        provider = get_llm_provider(args.provider)
+    except ValueError as exc:
+        logger.error(f"Error: {exc}")
+        sys.exit(1)
 
     # Change to git root directory
     try:
@@ -604,15 +731,32 @@ def main() -> None:
     logger.info("Generating PR body...")
     pr_body = None
     if not args.no_ollama:
-        logger.info("Checking for Ollama...")
-        if is_ollama_running():
-            logger.info("Ollama is running. Generating PR body...")
-            model = args.model or get_ollama_model()
-            pr_body = generate_pr_body_with_ollama(issue_title, issue_body, model)
-            if pr_body:
-                logger.info("Generated PR body with Ollama")
+        if provider == "lmstudio":
+            logger.info("Checking for LM Studio...")
+            if is_lmstudio_running():
+                logger.info("LM Studio is running. Generating PR body...")
+                model = args.model or get_lmstudio_model()
+                if not model:
+                    logger.warning(
+                        "LM Studio has no model loaded (set LMSTUDIO_MODEL or load a "
+                        "model in LM Studio). Using placeholder PR body."
+                    )
+                else:
+                    pr_body = generate_pr_body_with_lmstudio(issue_title, issue_body, model)
+                    if pr_body:
+                        logger.info("Generated PR body with LM Studio")
+            else:
+                logger.info("LM Studio not available. Using placeholder PR body.")
         else:
-            logger.info("Ollama not available. Using placeholder PR body.")
+            logger.info("Checking for Ollama...")
+            if is_ollama_running():
+                logger.info("Ollama is running. Generating PR body...")
+                model = args.model or get_ollama_model()
+                pr_body = generate_pr_body_with_ollama(issue_title, issue_body, model)
+                if pr_body:
+                    logger.info("Generated PR body with Ollama")
+            else:
+                logger.info("Ollama not available. Using placeholder PR body.")
 
     if not pr_body:
         pr_body = create_placeholder_pr_body(issue_id, issue_title, issue_body)
