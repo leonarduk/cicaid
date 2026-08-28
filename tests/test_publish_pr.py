@@ -146,3 +146,140 @@ def test_fetch_issue_non_404_error_is_reported_plainly(caplog):
     assert issue is None
     assert "connection refused" in caplog.text
     assert "not accessible" not in caplog.text
+
+
+class _FakeResp:
+    """Minimal requests.Response stand-in for the LM Studio helpers."""
+
+    def __init__(self, status_code: int, payload: dict | None = None):
+        self.status_code = status_code
+        self._payload = payload or {}
+
+    def json(self):
+        return self._payload
+
+
+# --- LM Studio provider (issue #25) ---
+
+
+def test_get_lmstudio_server_url_defaults():
+    assert publish_pr.get_lmstudio_server_url() == "http://localhost:1234"
+    assert publish_pr.get_lmstudio_server_url(host="127.0.0.1", port=9000) == "http://127.0.0.1:9000"
+
+
+def test_is_lmstudio_running_true_with_loaded_models():
+    with patch("cicaid_devtools.lib.publish_pr.requests.get") as mock_get:
+        mock_get.return_value = _FakeResp(200, {"data": [{"id": "qwen2.5-coder-7b"}]})
+        assert publish_pr.is_lmstudio_running() is True
+
+
+def test_is_lmstudio_running_false_without_loaded_models():
+    with patch("cicaid_devtools.lib.publish_pr.requests.get") as mock_get:
+        mock_get.return_value = _FakeResp(200, {"data": []})
+        assert publish_pr.is_lmstudio_running() is False
+
+
+def test_is_lmstudio_running_false_on_error():
+    with patch("cicaid_devtools.lib.publish_pr.requests.get") as mock_get:
+        mock_get.side_effect = requests_exception()
+        assert publish_pr.is_lmstudio_running() is False
+
+
+def requests_exception():
+    import requests
+
+    return requests.RequestException("connection refused")
+
+
+def test_get_lmstudio_model_env_wins(monkeypatch):
+    monkeypatch.setenv("LMSTUDIO_MODEL", "explicit-model")
+    assert publish_pr.get_lmstudio_model() == "explicit-model"
+
+
+def test_get_lmstudio_model_autopicks_coder_model():
+    with patch("cicaid_devtools.lib.publish_pr.requests.get") as mock_get:
+        mock_get.return_value = _FakeResp(
+            200, {"data": [{"id": "llama-3.2-3b"}, {"id": "qwen2.5-coder-7b"}]}
+        )
+        assert publish_pr.get_lmstudio_model() == "qwen2.5-coder-7b"
+
+
+def test_get_lmstudio_model_none_when_nothing_loaded():
+    with patch("cicaid_devtools.lib.publish_pr.requests.get") as mock_get:
+        mock_get.return_value = _FakeResp(200, {"data": []})
+        assert publish_pr.get_lmstudio_model() is None
+
+
+def test_get_lmstudio_model_none_on_error():
+    with patch("cicaid_devtools.lib.publish_pr.requests.get") as mock_get:
+        mock_get.side_effect = requests_exception()
+        assert publish_pr.get_lmstudio_model() is None
+
+
+def test_generate_pr_body_with_lmstudio_success():
+    with patch("cicaid_devtools.lib.publish_pr.requests.post") as mock_post:
+        mock_post.return_value = _FakeResp(
+            200, {"choices": [{"message": {"content": "## What\nLM Studio body"}}]}
+        )
+        body = publish_pr.generate_pr_body_with_lmstudio("Title", "Body", "qwen2.5-coder-7b")
+
+    assert body == "## What\nLM Studio body"
+    args, kwargs = mock_post.call_args
+    assert args[0] == "http://localhost:1234/v1/chat/completions"
+    assert kwargs["json"]["model"] == "qwen2.5-coder-7b"
+    assert kwargs["json"]["messages"][0]["role"] == "user"
+    assert "Issue title: Title" in kwargs["json"]["messages"][0]["content"]
+
+
+def test_generate_pr_body_with_lmstudio_none_when_no_model():
+    assert publish_pr.generate_pr_body_with_lmstudio("Title", "Body", "") is None
+
+
+def test_generate_pr_body_with_lmstudio_none_on_non_200():
+    with patch("cicaid_devtools.lib.publish_pr.requests.post") as mock_post:
+        mock_post.return_value = _FakeResp(500, {})
+        assert publish_pr.generate_pr_body_with_lmstudio("Title", "Body", "m") is None
+
+
+def test_generate_pr_body_with_lmstudio_none_on_missing_choices():
+    with patch("cicaid_devtools.lib.publish_pr.requests.post") as mock_post:
+        mock_post.return_value = _FakeResp(200, {})
+        assert publish_pr.generate_pr_body_with_lmstudio("Title", "Body", "m") is None
+
+
+def test_generate_pr_body_with_lmstudio_none_on_empty_content():
+    with patch("cicaid_devtools.lib.publish_pr.requests.post") as mock_post:
+        mock_post.return_value = _FakeResp(200, {"choices": [{"message": {"content": "   "}}]})
+        assert publish_pr.generate_pr_body_with_lmstudio("Title", "Body", "m") is None
+
+
+def test_generate_pr_body_with_lmstudio_none_on_request_error():
+    with patch("cicaid_devtools.lib.publish_pr.requests.post") as mock_post:
+        mock_post.side_effect = requests_exception()
+        assert publish_pr.generate_pr_body_with_lmstudio("Title", "Body", "m") is None
+
+
+def test_get_llm_provider_defaults_to_ollama(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    assert publish_pr.get_llm_provider(None) == "ollama"
+
+
+def test_get_llm_provider_uses_env(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "lmstudio")
+    assert publish_pr.get_llm_provider(None) == "lmstudio"
+
+
+def test_get_llm_provider_arg_wins_over_env(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    assert publish_pr.get_llm_provider("lmstudio") == "lmstudio"
+
+
+def test_get_llm_provider_rejects_unknown(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    import pytest
+
+    with pytest.raises(ValueError):
+        publish_pr.get_llm_provider("bogus")
+    monkeypatch.setenv("LLM_PROVIDER", "bogus")
+    with pytest.raises(ValueError):
+        publish_pr.get_llm_provider(None)
