@@ -283,3 +283,106 @@ def test_get_llm_provider_rejects_unknown(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "bogus")
     with pytest.raises(ValueError):
         publish_pr.get_llm_provider(None)
+
+
+# --- --body-file (issue #27) ---
+
+
+def test_resolve_pr_body_uses_body_file_verbatim_and_skips_generation(tmp_path):
+    """--body-file must be used as-is and must never probe Ollama/LM Studio."""
+    body_file = tmp_path / "body.md"
+    body_file.write_text("## What\nHand-drafted body.\n\nCloses #99", encoding="utf-8")
+
+    with patch("cicaid_devtools.lib.publish_pr.is_ollama_running") as mock_ollama, patch(
+        "cicaid_devtools.lib.publish_pr.is_lmstudio_running"
+    ) as mock_lmstudio, patch(
+        "cicaid_devtools.lib.publish_pr.generate_pr_body_with_ollama"
+    ) as mock_gen_ollama, patch(
+        "cicaid_devtools.lib.publish_pr.generate_pr_body_with_lmstudio"
+    ) as mock_gen_lmstudio:
+        body = publish_pr.resolve_pr_body(
+            99, "Title", "Body", "ollama", body_file=str(body_file)
+        )
+
+    assert "Hand-drafted body." in body
+    # Neither local server was probed nor asked to generate anything.
+    mock_ollama.assert_not_called()
+    mock_lmstudio.assert_not_called()
+    mock_gen_ollama.assert_not_called()
+    mock_gen_lmstudio.assert_not_called()
+
+
+def test_resolve_pr_body_body_file_appends_closes_if_missing(tmp_path):
+    """A supplied body file without its own 'Closes #N' still gets one appended."""
+    body_file = tmp_path / "body.md"
+    body_file.write_text("## What\nHand-drafted body with no Closes line.", encoding="utf-8")
+
+    body = publish_pr.resolve_pr_body(123, "Title", "Body", "ollama", body_file=str(body_file))
+
+    assert "Closes #123" in body
+
+
+def test_resolve_pr_body_body_file_does_not_duplicate_existing_closes(tmp_path):
+    """A supplied body file that already has 'Closes #N' is left untouched."""
+    body_file = tmp_path / "body.md"
+    body_file.write_text("## What\nAlready closes it.\n\nCloses #123", encoding="utf-8")
+
+    body = publish_pr.resolve_pr_body(123, "Title", "Body", "ollama", body_file=str(body_file))
+
+    assert body.count("Closes #123") == 1
+
+
+def test_resolve_pr_body_body_file_wins_over_no_ollama(tmp_path):
+    """If both --body-file and --no-ollama are given, --body-file wins (it's the
+    more explicit signal) -- no-ollama being set must not change the outcome."""
+    body_file = tmp_path / "body.md"
+    body_file.write_text("## What\nFrom file.", encoding="utf-8")
+
+    body = publish_pr.resolve_pr_body(
+        1, "Title", "Body", "ollama", body_file=str(body_file), no_ollama=True
+    )
+
+    assert "From file." in body
+
+
+def test_resolve_pr_body_missing_body_file_errors_clearly(tmp_path):
+    """A nonexistent --body-file path must exit with a clear error, not crash
+    with an unhandled traceback."""
+    import pytest
+
+    missing = tmp_path / "does-not-exist.md"
+    with pytest.raises(SystemExit) as exc_info:
+        publish_pr.resolve_pr_body(1, "Title", "Body", "ollama", body_file=str(missing))
+
+    assert exc_info.value.code == 1
+
+
+def test_resolve_pr_body_missing_body_file_logs_clear_error(tmp_path, caplog):
+    """The error logged for a missing --body-file names the path and the cause."""
+    import pytest
+
+    missing = tmp_path / "does-not-exist.md"
+    with pytest.raises(SystemExit):
+        publish_pr.resolve_pr_body(1, "Title", "Body", "ollama", body_file=str(missing))
+
+    assert str(missing) in caplog.text
+
+
+def test_resolve_pr_body_falls_back_to_placeholder_without_body_file():
+    """Without --body-file, and with no LLM reachable, the placeholder path is
+    still used -- resolve_pr_body must preserve pre-existing behavior."""
+    with patch("cicaid_devtools.lib.publish_pr.is_ollama_running", return_value=False):
+        body = publish_pr.resolve_pr_body(5, "Title", "Issue body text", "ollama")
+
+    assert "<!-- Describe what changed -->" in body
+    assert "Closes #5" in body
+
+
+def test_resolve_pr_body_no_ollama_skips_generation_without_body_file():
+    """--no-ollama (without --body-file) still skips generation entirely,
+    matching the pre-existing flag's documented behavior."""
+    with patch("cicaid_devtools.lib.publish_pr.is_ollama_running") as mock_ollama:
+        body = publish_pr.resolve_pr_body(5, "Title", "Issue body text", "ollama", no_ollama=True)
+
+    mock_ollama.assert_not_called()
+    assert "<!-- Describe what changed -->" in body

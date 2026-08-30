@@ -471,6 +471,99 @@ def create_placeholder_pr_body(issue_id: int, issue_title: str, issue_body: str)
 Closes #{issue_id}"""
 
 
+def read_pr_body_file(path: str) -> str:
+    """Read a caller-supplied PR body verbatim (UTF-8) from ``path``.
+
+    Used by ``--body-file`` to hand off body generation entirely to the
+    caller (e.g. a cloud-model pipeline that already has its own drafted
+    text) -- the content is used as-is, with no Ollama/LM Studio involvement
+    and no reformatting. Exits with a clear error rather than letting a
+    typo'd path surface as an unhandled traceback, matching how the rest of
+    ``main()`` reports fatal input problems.
+    """
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.error(f"Error: Could not read --body-file '{path}': {exc}")
+        sys.exit(1)
+
+
+def resolve_pr_body(
+    issue_id: int,
+    issue_title: str,
+    issue_body: str,
+    provider: str,
+    body_file: Optional[str] = None,
+    model: Optional[str] = None,
+    no_ollama: bool = False,
+) -> str:
+    """Resolve the final PR body text and append ``Closes #N`` if missing.
+
+    Three sources are tried in priority order:
+
+    1. ``body_file`` -- if given, the body is read verbatim from that file
+       and the Ollama/LM Studio generation branch is skipped *entirely*:
+       no ``is_ollama_running()``/``is_lmstudio_running()`` probe happens at
+       all, since a caller passing ``--body-file`` has explicitly said it
+       doesn't want this code touching a local LLM server. This also wins
+       over ``no_ollama`` if both are somehow set -- an explicit body file
+       is the more specific signal.
+    2. Otherwise, unless ``no_ollama`` is set, the configured ``provider``
+       (Ollama or LM Studio) is probed and, if reachable, asked to draft the
+       body.
+    3. If neither of the above produced a body, ``create_placeholder_pr_body``
+       supplies the raw template.
+
+    The ``Closes #{issue_id}`` directive is appended (if not already present)
+    regardless of which source produced ``pr_body`` above, so a caller-supplied
+    body via ``--body-file`` still gets the same issue-linking guarantee as a
+    generated or placeholder one.
+    """
+    if body_file:
+        pr_body = read_pr_body_file(body_file)
+    else:
+        pr_body = None
+        if not no_ollama:
+            if provider == "lmstudio":
+                logger.info("Checking for LM Studio...")
+                if is_lmstudio_running():
+                    logger.info("LM Studio is running. Generating PR body...")
+                    resolved_model = model or get_lmstudio_model()
+                    if not resolved_model:
+                        logger.warning(
+                            "LM Studio has no model loaded (set LMSTUDIO_MODEL or load a "
+                            "model in LM Studio). Using placeholder PR body."
+                        )
+                    else:
+                        pr_body = generate_pr_body_with_lmstudio(
+                            issue_title, issue_body, resolved_model
+                        )
+                        if pr_body:
+                            logger.info("Generated PR body with LM Studio")
+                else:
+                    logger.info("LM Studio not available. Using placeholder PR body.")
+            else:
+                logger.info("Checking for Ollama...")
+                if is_ollama_running():
+                    logger.info("Ollama is running. Generating PR body...")
+                    resolved_model = model or get_ollama_model()
+                    pr_body = generate_pr_body_with_ollama(issue_title, issue_body, resolved_model)
+                    if pr_body:
+                        logger.info("Generated PR body with Ollama")
+                else:
+                    logger.info("Ollama not available. Using placeholder PR body.")
+
+        if not pr_body:
+            pr_body = create_placeholder_pr_body(issue_id, issue_title, issue_body)
+
+    # Append Closes directive if not already present -- applies regardless of
+    # which of the three sources above produced pr_body.
+    if f"Closes #{issue_id}" not in pr_body:
+        pr_body += f"\n\nCloses #{issue_id}"
+
+    return pr_body
+
+
 def find_existing_pr(owner: str, repo: str, branch: str) -> Optional[str]:
     """Return the URL of an existing open PR for this branch, if any."""
     result = subprocess.run(
@@ -634,7 +727,23 @@ def main() -> None:
         action="store_true",
         help=(
             "Skip LLM generation and use placeholder PR body "
-            "(flag name kept for backward compatibility; applies to any provider)"
+            "(flag name kept for backward compatibility; applies to any provider). "
+            "Ignored if --body-file is also given -- --body-file takes priority."
+        ),
+    )
+    parser.add_argument(
+        "--body-file",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Read the PR body verbatim (UTF-8) from PATH instead of generating "
+            "one here. Skips the Ollama/LM Studio generation branch entirely -- "
+            "neither server is even probed -- so a caller with its own LLM (e.g. "
+            "a cloud-model pipeline) can draft the body itself without this "
+            "command touching a local model server. Takes priority over "
+            "--no-ollama if both are given, since supplying a body file is the "
+            "more explicit signal. 'Closes #NNNN' is still appended if not "
+            "already present in the supplied file's content."
         ),
     )
     parser.add_argument(
@@ -734,43 +843,21 @@ def main() -> None:
     if not push_to_remote(branch):
         sys.exit(1)
 
-    # Generate PR body
-    logger.info("Generating PR body...")
-    pr_body = None
-    if not args.no_ollama:
-        if provider == "lmstudio":
-            logger.info("Checking for LM Studio...")
-            if is_lmstudio_running():
-                logger.info("LM Studio is running. Generating PR body...")
-                model = args.model or get_lmstudio_model()
-                if not model:
-                    logger.warning(
-                        "LM Studio has no model loaded (set LMSTUDIO_MODEL or load a "
-                        "model in LM Studio). Using placeholder PR body."
-                    )
-                else:
-                    pr_body = generate_pr_body_with_lmstudio(issue_title, issue_body, model)
-                    if pr_body:
-                        logger.info("Generated PR body with LM Studio")
-            else:
-                logger.info("LM Studio not available. Using placeholder PR body.")
-        else:
-            logger.info("Checking for Ollama...")
-            if is_ollama_running():
-                logger.info("Ollama is running. Generating PR body...")
-                model = args.model or get_ollama_model()
-                pr_body = generate_pr_body_with_ollama(issue_title, issue_body, model)
-                if pr_body:
-                    logger.info("Generated PR body with Ollama")
-            else:
-                logger.info("Ollama not available. Using placeholder PR body.")
-
-    if not pr_body:
-        pr_body = create_placeholder_pr_body(issue_id, issue_title, issue_body)
-
-    # Append Closes directive if not already present
-    if f"Closes #{issue_id}" not in pr_body:
-        pr_body += f"\n\nCloses #{issue_id}"
+    # Generate PR body. --body-file (if given) short-circuits the whole
+    # Ollama/LM-Studio branch inside resolve_pr_body -- see its docstring.
+    if args.body_file:
+        logger.info(f"Reading PR body from --body-file '{args.body_file}'...")
+    else:
+        logger.info("Generating PR body...")
+    pr_body = resolve_pr_body(
+        issue_id,
+        issue_title,
+        issue_body,
+        provider,
+        body_file=args.body_file,
+        model=args.model,
+        no_ollama=args.no_ollama,
+    )
 
     # Create PR (wiki repos don't support PRs on GitHub)
     if is_wiki_repo():
