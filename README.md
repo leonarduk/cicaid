@@ -57,7 +57,7 @@ cicaid run-ci-checks --list  # this repo's local check suite
 
 Every command already avoids prompting when its arguments fully specify what
 to do (e.g. `work-on-pr 123`, `run-ci-checks --check NAME`, `update-issue
---yes`). Set `CICAID_NON_INTERACTIVE=1` to make any command that would
+123 --yes`). Set `CICAID_NON_INTERACTIVE=1` to make any command that would
 otherwise prompt (an unspecified PR to check out, an unselected check menu,
 an unconfirmed issue update) exit with a clear error instead, so an AI
 driver (Claude Code, aider, ...) can rely on one env var rather than a
