@@ -80,6 +80,85 @@ def test_print_help_shows_footer_when_no_extensions_installed(capsys, monkeypatc
     assert "https://github.com/leonarduk/cicaid-pro" in out
 
 
+def test_print_help_groups_commands_by_category(capsys, monkeypatch):
+    monkeypatch.setattr(cli.importlib.metadata, "entry_points", lambda *, group: [])
+
+    cli.print_help(cli.COMMANDS)
+
+    out = capsys.readouterr().out
+    assert "\nIssues:" in out
+    assert "\nPull requests:" in out
+    assert "\nCI & repo tooling:" in out
+    # A command still shows its flat numeric shortcut regardless of grouping.
+    assert "update-issue (8)" in out
+    issues_start = out.index("Issues:")
+    prs_start = out.index("Pull requests:")
+    assert issues_start < out.index("sync-issues (1)") < prs_start
+
+
+def test_print_help_puts_uncategorized_extension_commands_under_extensions(capsys, monkeypatch):
+    class FakeDist:
+        name = "cicaid-devtools-pro"
+
+    class FakeEntryPoint:
+        name = "fake-command"
+        value = "fake_extension_module:main"
+        dist = FakeDist()
+
+    monkeypatch.setattr(
+        cli.importlib.metadata, "entry_points", lambda *, group: [FakeEntryPoint()]
+    )
+    commands = {**cli.COMMANDS, "fake-command": ("fake_extension_module", "Does a thing")}
+
+    cli.print_help(commands)
+
+    out = capsys.readouterr().out
+    assert "\nExtensions:" in out
+    assert "fake-command" in out.split("Extensions:")[1]
+
+
+def test_print_help_always_shows_wiki_link(capsys, monkeypatch):
+    monkeypatch.setattr(cli.importlib.metadata, "entry_points", lambda *, group: [])
+
+    cli.print_help(cli.COMMANDS)
+
+    assert f"Full docs: {cli.WIKI_URL}" in capsys.readouterr().out
+
+
+def test_help_offers_to_open_wiki_only_on_a_tty(capsys, monkeypatch):
+    """No prompt (and no hang) when stdin isn't a TTY -- the normal case for
+    scripted/piped/CI invocations, and for this test suite itself."""
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+
+    assert cli.main(["help"]) == 0
+
+    assert opened == []
+
+
+def test_help_opens_wiki_when_user_accepts_prompt(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+
+    cli._offer_to_open_wiki()
+
+    assert opened == [cli.WIKI_URL]
+
+
+def test_help_skips_opening_wiki_when_user_declines(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+
+    cli._offer_to_open_wiki()
+
+    assert opened == []
+
+
 def test_describe_reads_docstring_without_executing_module(tmp_path, monkeypatch):
     """_describe must not execute the target module -- some command modules
     do real work (e.g. a live git-remote lookup) at import time, which must

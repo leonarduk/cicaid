@@ -18,11 +18,13 @@ import importlib
 import importlib.metadata
 import importlib.util
 import sys
+import webbrowser
 from pathlib import Path
 
 from cicaid_devtools.version_checker import check_and_prompt
 
 ENTRY_POINT_GROUP = "cicaid.commands"
+WIKI_URL = "https://github.com/leonarduk/cicaid/wiki"
 
 # This package's own commands -- always available regardless of what
 # extensions are installed. Kept in the same order as the README's command
@@ -51,6 +53,24 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "Run graphify across a configured list of repos",
     ),
     "merge-pr": ("cicaid_devtools.merge_pr", "Merge an open PR"),
+}
+
+# Groups this package's own commands for `cicaid --help` -- purely a display
+# aid (numeric shortcuts and dispatch still key off COMMANDS' flat insertion
+# order, unaffected by this). Any command not listed here (currently none of
+# this package's own, but always true of extension commands) falls into a
+# trailing "Extensions"/"Other" section in print_help.
+CATEGORIES: dict[str, tuple[str, ...]] = {
+    "Issues": ("sync-issues", "work-on-issue", "update-issue"),
+    "Pull requests": (
+        "work-on-pr",
+        "publish-pr",
+        "add-issue-to-pr",
+        "dependabot-auto-merge",
+        "update-prs",
+        "merge-pr",
+    ),
+    "CI & repo tooling": ("run-ci-checks", "graphify-repos"),
 }
 
 
@@ -120,24 +140,70 @@ def _numeric_shortcuts(commands: dict[str, tuple[str, str]]) -> dict[str, str]:
 
 
 def print_help(commands: dict[str, tuple[str, str]]) -> None:
-    """Print the command list, e.g. for `cicaid` with no arguments."""
+    """Print the command list, e.g. for `cicaid` with no arguments.
+
+    Commands are grouped by category (see CATEGORIES) so the list reads as a
+    map of what's available rather than one flat, arbitrarily-ordered block.
+    Numeric shortcuts still reflect each command's position in `commands`
+    (its flat insertion order), not its position within its group.
+    """
     extension_dists = _extension_distributions()
     print("Usage: cicaid <command|number> [args...]")
     print("       cicaid help <command|number>  (detailed command help)")
     print("       cicaid sync-issues         (or: cicaid 1) — sync GitHub issues")
-    print("       cicaid <command> --help    (that command's full flags)\n")
-    print("Commands:")
+    print("       cicaid <command> --help    (that command's full flags)")
+
+    indices = {name: i for i, name in enumerate(commands, start=1)}
     width = max(len(name) for name in commands)
-    for i, (name, (_, description)) in enumerate(commands.items(), start=1):
-        label = f"{name} ({i})"
+
+    def print_command(name: str) -> None:
+        _, description = commands[name]
+        label = f"{name} ({indices[name]})"
         suffix = f" [{extension_dists[name]}]" if name in extension_dists else ""
         print(f"  {label.ljust(width + 5)}  {description}{suffix}")
+
+    categorized: set[str] = set()
+    for category, names in CATEGORIES.items():
+        present = [name for name in names if name in commands]
+        if not present:
+            continue
+        categorized.update(present)
+        print(f"\n{category}:")
+        for name in present:
+            print_command(name)
+
+    leftover = [name for name in commands if name not in categorized]
+    if leftover:
+        heading = "Extensions" if extension_dists else "Other"
+        print(f"\n{heading}:")
+        for name in leftover:
+            print_command(name)
+
     if not extension_dists:
         print(
             "\ncicaid-pro adds LLM-backed commands (issue triage, PR review, "
             "AI-assisted issue creation, ...) -- see "
             "https://github.com/leonarduk/cicaid-pro"
         )
+    print(f"\nFull docs: {WIKI_URL}")
+
+
+def _offer_to_open_wiki() -> None:
+    """Ask to open the GitHub wiki in a browser; a silent no-op off a real TTY.
+
+    Only called from an explicit `cicaid help` (not the bare `cicaid` or
+    `--help`/`-h` banner), so it doesn't intrude on scripted/non-interactive
+    use -- and stdin not being a TTY (piped input, CI, tests) skips the
+    prompt entirely rather than blocking on it.
+    """
+    if not sys.stdin.isatty():
+        return
+    try:
+        choice = input("\nOpen full docs in your browser? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if choice in ("y", "yes"):
+        webbrowser.open(WIKI_URL)
 
 
 def _resolve_command(command: str, numeric_shortcuts: dict[str, str]) -> str:
@@ -186,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[0] == "help":
         if len(argv) == 1:
             print_help(commands)
+            _offer_to_open_wiki()
             return 0
         if len(argv) > 2:
             print("Usage: cicaid help <command|number>", file=sys.stderr)
