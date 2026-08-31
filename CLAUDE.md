@@ -8,7 +8,8 @@ concise agent-facing companion.
 
 `cicaid` is the free, public shell of the `cicaid-devtools` package: issue
 sync, branch/checkout-for-issue, checkout-for-PR, local CI checks, link PR to
-issue, and auto-merge green Dependabot PRs.
+issue, merge a PR, keep a PR's branch up to date with its base, and
+auto-merge green Dependabot PRs.
 
 The LLM-backed commands (`triage-issues`, `review-issue`, `create-issue`,
 `local-review`, `pr-review`, `commit-and-push`, `implement-issue-with-aider`,

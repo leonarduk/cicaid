@@ -50,6 +50,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "cicaid_devtools.graphify_repos",
         "Run graphify across a configured list of repos",
     ),
+    "merge-pr": ("cicaid_devtools.merge_pr", "Merge an open PR"),
 }
 
 
