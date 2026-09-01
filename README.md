@@ -16,7 +16,7 @@ until it's installed.
 
 <!-- cicaid-version:start -->
 ```bash
-pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.4.0/cicaid_devtools-0.4.0-py3-none-any.whl"
+pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.5.0/cicaid_devtools-0.5.0-py3-none-any.whl"
 ```
 <!-- cicaid-version:end -->
 
@@ -31,7 +31,7 @@ The standard installation loads `GITHUB_TOKEN` and similar from a repo-root
 
 <!-- cicaid-version-dotenv:start -->
 ```bash
-pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/releases/download/v0.4.0/cicaid_devtools-0.4.0-py3-none-any.whl"
+pip install "cicaid-devtools[dotenv] @ https://github.com/leonarduk/cicaid/releases/download/v0.5.0/cicaid_devtools-0.5.0-py3-none-any.whl"
 ```
 <!-- cicaid-version-dotenv:end -->
 
@@ -113,7 +113,7 @@ derives it from the git tag at build time.
 
 1. Go to [Releases → Draft a new release](https://github.com/leonarduk/cicaid/releases/new).
 2. Create a new tag (the most recently published release is
-   <!-- cicaid-latest-tag:start -->`v0.4.0`<!-- cicaid-latest-tag:end -->,
+   <!-- cicaid-latest-tag:start -->`v0.5.0`<!-- cicaid-latest-tag:end -->,
    so pick the next one) targeting `main`, and publish the release.
 
 The [release workflow](.github/workflows/release.yml) is triggered when a `v*`
