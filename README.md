@@ -53,6 +53,10 @@ cicaid publish-pr            # open the PR
 cicaid run-ci-checks --list  # this repo's local check suite
 ```
 
+Every command can be called by its full name or its two-letter abbreviation
+shown next to it (`cicaid si` for `sync-issues`) — `cicaid --help` lists them
+all.
+
 ## Non-interactive use
 
 Every command already avoids prompting when its arguments fully specify what
