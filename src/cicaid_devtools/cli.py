@@ -139,26 +139,77 @@ def _numeric_shortcuts(commands: dict[str, tuple[str, str]]) -> dict[str, str]:
     return {str(i): name for i, name in enumerate(commands, start=1)}
 
 
+# Words that merely join parts of a command name (commit-and-push, work-on-issue)
+# rather than naming something, dropped when deriving abbreviations so the
+# abbreviation reads as the command's actual content words. Extension commands
+# are discovered at runtime, so this list is the only place abbreviations are
+# "configured"; everything else derives from each command name itself.
+_CONNECTOR_WORDS = frozenset(
+    {"and", "or", "with", "to", "from", "on", "by", "of", "for", "in", "at"}
+)
+
+
+def _command_signature(name: str) -> str:
+    """Meaningful-word initials of a command name, e.g. ``commit-and-push`` -> ``cp``.
+
+    Connector words (``and``, ``on``, ``with``, ...) are skipped so the
+    abbreviation comes from the command's real content words (never ``ca`` for
+    commit-and-push). A name left with a single content word falls back to its
+    first two letters.
+    """
+    words = [word for word in name.split("-") if word not in _CONNECTOR_WORDS]
+    if not words:
+        return ""
+    if len(words) == 1:
+        return words[0][:2]
+    return "".join(word[0] for word in words)
+
+
+def _abbreviations(commands: dict[str, tuple[str, str]]) -> dict[str, str]:
+    """Unique abbreviation -> command name, derived from each command's name.
+
+    Abbreviations start as the first two characters of a command's
+    meaningful-word signature and are extended one character at a time when
+    that would collide with an already-assigned abbreviation, so no two
+    commands ever share one. A command whose signature runs out without
+    finding a free abbreviation (e.g. two names with identical content-word
+    initials) gets none and stays callable by full name or number. Commands
+    earlier in ``commands`` (this package's own) win shorter abbreviations
+    over later extension commands.
+    """
+    abbreviations: dict[str, str] = {}
+    for name in commands:
+        signature = _command_signature(name)
+        for length in range(2, len(signature) + 1):
+            candidate = signature[:length]
+            if candidate not in abbreviations:
+                abbreviations[candidate] = name
+                break
+    return abbreviations
+
+
 def print_help(commands: dict[str, tuple[str, str]]) -> None:
     """Print the command list, e.g. for `cicaid` with no arguments.
 
     Commands are grouped by category (see CATEGORIES) so the list reads as a
     map of what's available rather than one flat, arbitrarily-ordered block.
-    Numeric shortcuts still reflect each command's position in `commands`
-    (its flat insertion order), not its position within its group.
+    Each command shows its unique two-letter abbreviation when it has one.
+    Numeric shortcuts still dispatch (legacy convenience) but are no longer
+    listed here.
     """
     extension_dists = _extension_distributions()
-    print("Usage: cicaid <command|number> [args...]")
-    print("       cicaid help <command|number>  (detailed command help)")
-    print("       cicaid sync-issues         (or: cicaid 1) — sync GitHub issues")
+    command_abbreviations = {name: abbr for abbr, name in _abbreviations(commands).items()}
+    print("Usage: cicaid <command|abbreviation> [args...]")
+    print("       cicaid help <command|abbreviation>  (detailed command help)")
+    print("       cicaid sync-issues         (or: cicaid si) — sync GitHub issues")
     print("       cicaid <command> --help    (that command's full flags)")
 
-    indices = {name: i for i, name in enumerate(commands, start=1)}
     width = max(len(name) for name in commands)
 
     def print_command(name: str) -> None:
         _, description = commands[name]
-        label = f"{name} ({indices[name]})"
+        abbreviation = command_abbreviations.get(name)
+        label = f"{name} ({abbreviation})" if abbreviation else name
         suffix = f" [{extension_dists[name]}]" if name in extension_dists else ""
         print(f"  {label.ljust(width + 5)}  {description}{suffix}")
 
@@ -206,9 +257,9 @@ def _offer_to_open_wiki() -> None:
         webbrowser.open(WIKI_URL)
 
 
-def _resolve_command(command: str, numeric_shortcuts: dict[str, str]) -> str:
-    """Resolve a command name or its numeric shortcut."""
-    return numeric_shortcuts.get(command, command)
+def _resolve_command(command: str, shortcuts: dict[str, str]) -> str:
+    """Resolve a command name or its numeric/abbreviation shortcut."""
+    return shortcuts.get(command, command)
 
 
 _UNKNOWN_COMMAND_SUFFIX = "an installed extension package (e.g. cicaid-pro) may provide it"
@@ -243,7 +294,10 @@ def main(argv: list[str] | None = None) -> int:
     check_and_prompt()
 
     commands = discover_commands()
-    numeric_shortcuts = _numeric_shortcuts(commands)
+    # Abbreviations and numbers both resolve to command names; full names pass
+    # through unchanged. Keys can't collide (letters vs. digits). Numbers stay
+    # dispatchable as a legacy convenience but are no longer shown in the menu.
+    shortcuts = {**_numeric_shortcuts(commands), **_abbreviations(commands)}
 
     if not argv or argv[0] in ("-h", "--help"):
         print_help(commands)
@@ -255,10 +309,10 @@ def main(argv: list[str] | None = None) -> int:
             _offer_to_open_wiki()
             return 0
         if len(argv) > 2:
-            print("Usage: cicaid help <command|number>", file=sys.stderr)
+            print("Usage: cicaid help <command|abbreviation>", file=sys.stderr)
             return 1
 
-        command = _resolve_command(argv[1], numeric_shortcuts)
+        command = _resolve_command(argv[1], shortcuts)
         if command not in commands:
             print(
                 f"Unknown command: {argv[1]!r} -- {_UNKNOWN_COMMAND_SUFFIX}.\n",
@@ -269,9 +323,9 @@ def main(argv: list[str] | None = None) -> int:
         return _dispatch(command, ["--help"], commands)
 
     command, rest = argv[0], argv[1:]
-    # Resolve numeric shortcuts to their corresponding command names.
-    if command in numeric_shortcuts:
-        command = _resolve_command(command, numeric_shortcuts)
+    # Resolve numeric/abbreviation shortcuts to their corresponding command names.
+    if command in shortcuts:
+        command = _resolve_command(command, shortcuts)
         print(f"Running: cicaid {command}")
     if command not in commands:
         print(

@@ -63,7 +63,7 @@ def test_print_help_marks_extension_commands_with_their_distribution(capsys, mon
 
     lines = capsys.readouterr().out.splitlines()
     fake_line = next(line for line in lines if "fake-command" in line)
-    own_line = next(line for line in lines if "sync-issues (1)" in line)
+    own_line = next(line for line in lines if "sync-issues (si)" in line)
 
     assert "[cicaid-devtools-pro]" in fake_line
     assert "[cicaid-devtools-pro]" not in own_line  # this package's own commands are never marked
@@ -89,11 +89,11 @@ def test_print_help_groups_commands_by_category(capsys, monkeypatch):
     assert "\nIssues:" in out
     assert "\nPull requests:" in out
     assert "\nCI & repo tooling:" in out
-    # A command still shows its flat numeric shortcut regardless of grouping.
-    assert "update-issue (8)" in out
+    # A command still shows its abbreviation regardless of grouping.
+    assert "update-issue (ui)" in out
     issues_start = out.index("Issues:")
     prs_start = out.index("Pull requests:")
-    assert issues_start < out.index("sync-issues (1)") < prs_start
+    assert issues_start < out.index("sync-issues (si)") < prs_start
 
 
 def test_print_help_puts_uncategorized_extension_commands_under_extensions(capsys, monkeypatch):
@@ -193,16 +193,16 @@ def test_discover_commands_own_commands_win_on_name_collision(monkeypatch):
 def test_no_args_prints_help(capsys):
     assert cli.main([]) == 0
     out = capsys.readouterr().out
-    assert "Usage: cicaid <command|number>" in out
-    assert "(or: cicaid 1)" in out
-    assert "sync-issues (1)" in out
-    assert "update-issue (8)" in out
+    assert "Usage: cicaid <command|abbreviation>" in out
+    assert "(or: cicaid si)" in out
+    assert "sync-issues (si)" in out
+    assert "update-issue (ui)" in out
 
 
 @pytest.mark.parametrize("flag", ["-h", "--help", "help"])
 def test_help_aliases_print_help(capsys, flag):
     assert cli.main([flag]) == 0
-    assert "Usage: cicaid <command|number>" in capsys.readouterr().out
+    assert "Usage: cicaid <command|abbreviation>" in capsys.readouterr().out
 
 
 def test_help_command_dispatches_target_help(monkeypatch):
@@ -242,14 +242,14 @@ def test_help_unknown_command_errors(capsys):
 
 def test_help_rejects_extra_arguments(capsys):
     assert cli.main(["help", "sync-issues", "extra"]) == 1
-    assert "Usage: cicaid help <command|number>" in capsys.readouterr().err
+    assert "Usage: cicaid help <command|abbreviation>" in capsys.readouterr().err
 
 
 def test_unknown_command_errors_and_lists_commands(capsys):
     assert cli.main(["not-a-real-command"]) == 1
     captured = capsys.readouterr()
     assert "Unknown command: 'not-a-real-command'" in captured.err
-    assert "Usage: cicaid <command|number>" in captured.out
+    assert "Usage: cicaid <command|abbreviation>" in captured.out
 
 
 def test_dispatches_to_target_command_with_remaining_args(monkeypatch):
@@ -344,14 +344,16 @@ def test_numeric_shortcut_passes_remaining_args(monkeypatch, capsys):
     assert "Running: cicaid work-on-issue" in capsys.readouterr().out
 
 
-def test_numeric_shortcut_help_displays_numbers(capsys):
-    """The help output should include numeric shortcuts alongside command names."""
+def test_help_displays_abbreviations_not_numbers(capsys):
+    """The help output should show each command's two-letter abbreviation next to
+    its name, with the numeric shortcut no longer listed."""
     assert cli.main([]) == 0
     out = capsys.readouterr().out
-    assert "Usage: cicaid <command|number>" in out
-    assert "(or: cicaid 1)" in out
-    assert "sync-issues (1)" in out
-    assert "publish-pr (5)" in out
+    assert "Usage: cicaid <command|abbreviation>" in out
+    assert "(or: cicaid si)" in out
+    assert "sync-issues (si)" in out
+    assert "publish-pr (pp)" in out
+    assert "sync-issues (1" not in out  # numbers are hidden from the menu
 
 
 def test_numeric_shortcut_out_of_range_is_unknown(capsys):
@@ -415,3 +417,158 @@ def test_real_module_still_accepts_unknown_args(monkeypatch, command):
     # A SystemExit(1) here means execution reached get_github_token(); argparse
     # would instead raise SystemExit(2) ("unrecognized arguments") before that.
     assert exc_info.value.code == 1
+
+
+def test_abbreviations_for_own_commands_are_unique_and_expected():
+    """Every command this package ships gets a predictable, unique abbreviation,
+    derived from its content words (connectors like `and`/`to` skipped)."""
+    expected = {
+        "sync-issues": "si",
+        "work-on-issue": "wi",
+        "work-on-pr": "wp",
+        "run-ci-checks": "rc",
+        "publish-pr": "pp",
+        "add-issue-to-pr": "ai",
+        "dependabot-auto-merge": "da",
+        "update-issue": "ui",
+        "update-prs": "up",
+        "graphify-repos": "gr",
+        "merge-pr": "mp",
+    }
+    commands = cli.discover_commands()
+    abbreviations = cli._abbreviations(commands)
+    by_name = {name: abbr for abbr, name in abbreviations.items()}
+    assert by_name == expected
+    assert len(abbreviations) == len(commands)  # every command has one
+
+
+def test_abbreviation_skips_connector_words_and_handles_single_word_names():
+    """`commit-and-push` must abbreviate to `cp` (never `ca` from `and`), and a
+    single-word name falls back to its first two letters."""
+    commands = {
+        "commit-and-push": ("m", ""),
+        "clear-ai-slop-issues": ("m", ""),
+        "implement-issue-with-aider": ("m", ""),
+        "work-on-issue": ("m", ""),
+        "work-on-pr": ("m", ""),
+        "graphify": ("m", ""),
+    }
+    assert cli._abbreviations(commands) == {
+        "cp": "commit-and-push",
+        "ca": "clear-ai-slop-issues",
+        "ii": "implement-issue-with-aider",
+        "wi": "work-on-issue",
+        "wp": "work-on-pr",
+        "gr": "graphify",
+    }
+
+
+def test_abbreviation_collisions_are_resolved_or_omitted():
+    """No two commands may share an abbreviation: a later colliding command is
+    extended until unique, and one whose initials are identical to an earlier
+    command's gets no abbreviation at all."""
+    commands = {
+        "create-issue": ("m", ""),
+        "create-issue-from-template": ("m", ""),
+        "commit-and-push": ("m", ""),
+        "check-and-push": ("m", ""),
+    }
+    abbreviations = cli._abbreviations(commands)
+    assert abbreviations == {
+        "ci": "create-issue",
+        "cit": "create-issue-from-template",
+        "cp": "commit-and-push",
+    }
+    # Uniqueness invariant: never two commands per abbreviation.
+    assert len(set(abbreviations)) == len(abbreviations)
+    assert all(name in commands for name in abbreviations.values())
+
+
+def test_abbreviation_dispatches_to_correct_command(monkeypatch, capsys):
+    """`cicaid cp` should run the extension command `commit-and-push` exactly as
+    the full name or its numeric shortcut would."""
+    resolved: list[str] = []
+    commands = {**cli.COMMANDS, "commit-and-push": ("some_pro_module", "")}
+
+    class FakeModule:
+        @staticmethod
+        def main():
+            resolved.append(sys.argv[0])
+            return 0
+
+    monkeypatch.setattr(cli, "discover_commands", lambda: commands)
+    monkeypatch.setattr(cli.importlib, "import_module", lambda name: FakeModule)
+
+    assert cli.main(["cp"]) == 0
+    assert resolved[-1] == "commit-and-push"
+    assert "Running: cicaid commit-and-push" in capsys.readouterr().out
+
+
+def test_abbreviation_passes_remaining_args(monkeypatch, capsys):
+    calls: list[list[str]] = []
+
+    class FakeModule:
+        @staticmethod
+        def main():
+            calls.append(list(sys.argv))
+            return 0
+
+    commands = {**cli.COMMANDS, "commit-and-push": ("some_pro_module", "")}
+    monkeypatch.setattr(cli, "discover_commands", lambda: commands)
+    monkeypatch.setattr(cli.importlib, "import_module", lambda name: FakeModule)
+
+    assert cli.main(["cp", "--draft"]) == 0
+    assert calls == [["commit-and-push", "--draft"]]
+    assert "Running: cicaid commit-and-push" in capsys.readouterr().out
+
+
+def test_help_command_accepts_abbreviation_shortcut(monkeypatch):
+    """`cicaid help cp` shows the same help as `cicaid help commit-and-push`."""
+    calls = []
+
+    class FakeModule:
+        @staticmethod
+        def main():
+            calls.append(list(sys.argv))
+            return 0
+
+    commands = {**cli.COMMANDS, "commit-and-push": ("some_pro_module", "")}
+    monkeypatch.setattr(cli, "discover_commands", lambda: commands)
+    monkeypatch.setattr(cli.importlib, "import_module", lambda name: FakeModule)
+
+    assert cli.main(["help", "cp"]) == 0
+    assert calls == [["commit-and-push", "--help"]]
+
+
+def test_unknown_abbreviation_is_unknown(capsys):
+    """A two-letter string that matches no command is an unknown command, not a
+    silent fallback."""
+    assert cli.main(["zz"]) == 1
+    captured = capsys.readouterr()
+    assert "Unknown command: 'zz'" in captured.err
+
+
+def test_print_help_shows_extension_abbreviation(capsys, monkeypatch):
+    """Extension commands get abbreviations too, shown next to their number."""
+    class FakeDist:
+        name = "cicaid-devtools-pro"
+
+    class FakeEntryPoint:
+        name = "commit-and-push"
+        value = "fake_extension_module:main"
+        dist = FakeDist()
+
+    monkeypatch.setattr(
+        cli.importlib.metadata, "entry_points", lambda *, group: [FakeEntryPoint()]
+    )
+    commands = {**cli.COMMANDS, "commit-and-push": ("fake_extension_module", "Commit and push")}
+
+    cli.print_help(commands)
+
+    line = next(
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if "commit-and-push" in line
+    )
+    assert "commit-and-push (cp)" in line
+    assert "[cicaid-devtools-pro]" in line
