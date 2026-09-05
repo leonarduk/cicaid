@@ -65,7 +65,7 @@ def test_filter_existing_labels_drops_missing_labels() -> None:
     assert result == ["bug"]
 
 
-def test_filter_existing_labels_falls_back_when_query_fails() -> None:
+def test_filter_existing_labels_drops_all_when_query_fails() -> None:
     failure = subprocess.CompletedProcess(
         ["gh", "label", "list"], returncode=1, stdout="", stderr="not found"
     )
@@ -75,7 +75,7 @@ def test_filter_existing_labels_falls_back_when_query_fails() -> None:
             "example", "project", ["bug", "Medium Value"]
         )
 
-    assert result == ["bug", "Medium Value"]
+    assert result == []
 
 
 def test_fetch_repo_labels_handles_bad_json() -> None:

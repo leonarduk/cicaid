@@ -210,12 +210,17 @@ def filter_existing_labels(owner: str, repo: str, labels: list[str]) -> list[str
 
     Matches case-insensitively (like `gh issue create --label` itself) and keeps
     the target repo's canonical spelling. If the repo's label list can't be
-    fetched, returns `labels` unfiltered so the original (pre-fix) behaviour is
-    the fallback.
+    fetched, drops every label (with a warning) rather than passing them through
+    unfiltered -- an unverifiable label could otherwise still hard-fail `gh issue
+    create`, the exact failure mode this function exists to avoid.
     """
     existing = fetch_repo_labels(owner, repo)
     if existing is None:
-        return labels
+        logger.warning(
+            f"WARNING: could not verify labels on {owner}/{repo}; creating the issue "
+            "without labels"
+        )
+        return []
 
     existing_by_key = {name.casefold(): name for name in existing}
     kept = []
