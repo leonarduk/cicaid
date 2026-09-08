@@ -53,6 +53,10 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "Run graphify across a configured list of repos",
     ),
     "merge-pr": ("cicaid_devtools.merge_pr", "Merge an open PR"),
+    "repo-privacy": (
+        "cicaid_devtools.repo_privacy",
+        "Prepare a repo for going private (self-hosted runners) or reverse it",
+    ),
 }
 
 # Groups this package's own commands for `cicaid --help` -- purely a display
@@ -70,7 +74,7 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
         "update-prs",
         "merge-pr",
     ),
-    "CI & repo tooling": ("run-ci-checks", "graphify-repos"),
+    "CI & repo tooling": ("run-ci-checks", "graphify-repos", "repo-privacy"),
 }
 
 
