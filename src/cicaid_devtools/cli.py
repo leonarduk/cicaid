@@ -211,6 +211,7 @@ def print_help(commands: dict[str, tuple[str, str]]) -> None:
     width = max(len(name) for name in commands)
 
     def print_command(name: str) -> None:
+        """Print one command's usage line, including its abbreviation and extension package."""
         _, description = commands[name]
         abbreviation = command_abbreviations.get(name)
         label = f"{name} ({abbreviation})" if abbreviation else name
