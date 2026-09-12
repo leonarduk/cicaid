@@ -24,11 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # @main, not a tag: no release of leonarduk/issue-worm yet contains
-      # both action.yml and the OpenAI-compatible coder (#590) it needs -
-      # see issue-worm-pro#581's tracking comment. Pin to a real tag once
-      # one is cut.
-      - uses: leonarduk/issue-worm@main
+      # @v1: the floating action tag that leonarduk/issue-worm's release
+      # workflow moves to each newest vX.Y.Z release (first: v0.2.3), so
+      # fixes arrive without editing this file. It only becomes v2 for a
+      # breaking change to action.yml's inputs (issue-worm-pro#581).
+      - uses: leonarduk/issue-worm@v1
         with:
           issue: ${{ github.event.issue.number }}
           # A fine-grained PAT (or GitHub App token) with `contents: write`,
