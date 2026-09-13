@@ -205,6 +205,45 @@ def pop_stash() -> bool:
     return True
 
 
+def find_base_ref() -> str | None:
+    """Return ``origin/main`` or ``origin/master``, whichever exists, else None."""
+    for candidate in ("origin/main", "origin/master"):
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", candidate],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return candidate
+    return None
+
+
+def has_no_commits_beyond(ref: str, base_ref: str) -> bool:
+    """True if every commit on ``ref`` is already on ``base_ref``.
+
+    A branch in that state carries no work of its own -- typically one this
+    command pushed on an earlier run (new branches are pushed immediately,
+    before any commits) that was then abandoned. Returns False if the check
+    itself fails, so an unexpected git error keeps the branch as-is rather
+    than discarding anything.
+    """
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ref, base_ref],
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def push_upstream(branch_name: str) -> None:
+    """``git push -u origin <branch>``, exiting with status 1 on failure."""
+    try:
+        subprocess.run(["git", "push", "-u", "origin", branch_name], check=True)
+    except subprocess.CalledProcessError as exc:
+        logger.error("Failed to push branch: %s", exc)
+        sys.exit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Create and check out a remote branch for the requested issue.
 
@@ -319,7 +358,34 @@ def main(argv: list[str] | None = None) -> None:
         except Exception:
             remote_exists = False
 
-        if remote_exists:
+        base_ref = find_base_ref()
+
+        # A branch left over from an earlier, abandoned attempt (pushed with
+        # no commits of its own) still points at wherever the base was back
+        # then. Checking it out as-is would start this attempt from that
+        # stale base -- days or weeks behind -- so every change is built and
+        # tested against old code. Reset it to the current base instead; only
+        # when *every* existing copy is empty, so real work (including
+        # unpushed local commits) is never discarded. The push is a
+        # fast-forward, so it needs no force.
+        stale = (
+            base_ref is not None
+            and (remote_exists or local_exists)
+            and (not remote_exists or has_no_commits_beyond(f"origin/{branch_name}", base_ref))
+            and (not local_exists or has_no_commits_beyond(branch_name, base_ref))
+        )
+
+        if stale:
+            logger.info(
+                "Branch %s has no commits beyond %s (left over from an earlier "
+                "attempt); resetting it to %s",
+                branch_name,
+                base_ref,
+                base_ref,
+            )
+            subprocess.run(["git", "checkout", "-B", branch_name, base_ref], check=True)
+            push_upstream(branch_name)
+        elif remote_exists:
             logger.info("Branch %s already exists on remote", branch_name)
             subprocess.run(
                 ["git", "fetch", "origin", branch_name], check=True, capture_output=True
@@ -327,26 +393,9 @@ def main(argv: list[str] | None = None) -> None:
         elif local_exists:
             logger.info("Branch %s exists locally; pushing to remote", branch_name)
             subprocess.run(["git", "checkout", branch_name], check=True)
-            try:
-                subprocess.run(["git", "push", "-u", "origin", branch_name], check=True)
-            except subprocess.CalledProcessError as exc:
-                logger.error("Failed to push branch: %s", exc)
-                sys.exit(1)
+            push_upstream(branch_name)
         else:
             logger.info("Creating branch...")
-            base_ref = None
-            for candidate in ("origin/main", "origin/master"):
-                try:
-                    subprocess.run(
-                        ["git", "rev-parse", "--verify", candidate],
-                        capture_output=True,
-                        check=True,
-                    )
-                    base_ref = candidate
-                    break
-                except subprocess.CalledProcessError:
-                    continue
-
             if base_ref is None:
                 logger.error("Could not find origin/main or origin/master")
                 sys.exit(1)
@@ -356,14 +405,7 @@ def main(argv: list[str] | None = None) -> None:
                 check=True,
             )
             logger.info("Pushing branch to remote...")
-            try:
-                subprocess.run(
-                    ["git", "push", "-u", "origin", branch_name],
-                    check=True,
-                )
-            except subprocess.CalledProcessError as exc:
-                logger.error("Failed to push branch: %s", exc)
-                sys.exit(1)
+            push_upstream(branch_name)
 
         # Checkout the branch if not already on it
         try:
