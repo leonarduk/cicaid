@@ -336,7 +336,9 @@ def test_main_does_not_double_pop_stash_on_success(monkeypatch):
 
     def fake_run(cmd, *args, **kwargs):
         if cmd[:2] == ["git", "rev-parse"] and "--verify" in cmd:
-            return MagicMock(returncode=1, stdout="", stderr="")
+            # origin/main exists; the issue branch doesn't yet, locally or remotely.
+            exists = cmd[-1] == "origin/main"
+            return MagicMock(returncode=0 if exists else 1, stdout="", stderr="")
         if cmd[:2] == ["git", "rev-parse"]:
             return MagicMock(returncode=0, stdout="fix/issue-145-some-issue\n", stderr="")
         return MagicMock(returncode=0, stdout="", stderr="")
@@ -348,6 +350,116 @@ def test_main_does_not_double_pop_stash_on_success(monkeypatch):
     woi.main()
 
     pop_mock.assert_called_once()
+
+
+# ──────────────── main(): existing branch left over from a past run ────────
+#
+# Real git against a throwaway bare "origin", because what matters here is
+# git's own ancestry/checkout/push semantics, not which commands get called.
+
+BRANCH = "fix/issue-7-some-issue"
+
+
+def _git(cwd, *args):
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True, encoding="utf-8"
+    ).stdout.strip()
+
+
+def _commit(repo, name):
+    (repo / f"{name}.txt").write_text(f"{name}\n", encoding="utf-8")
+    _git(repo, "add", f"{name}.txt")
+    _git(repo, "commit", "-q", "-m", name)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def git_origin(tmp_path, monkeypatch):
+    """A bare origin whose main has one commit, plus a seed clone to push from."""
+    for key in ("GIT_AUTHOR", "GIT_COMMITTER"):
+        monkeypatch.setenv(f"{key}_NAME", "test")
+        monkeypatch.setenv(f"{key}_EMAIL", "test@example.com")
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    seed = tmp_path / "seed"
+    _git(tmp_path, "clone", "-q", str(origin), str(seed))
+    _commit(seed, "one")
+    _git(seed, "push", "-q", "origin", "HEAD:main")
+    return origin, seed
+
+
+def _clone(tmp_path, origin):
+    work = tmp_path / "work"
+    _git(tmp_path, "clone", "-q", str(origin), str(work))
+    return work
+
+
+def _run_main(monkeypatch, work):
+    """Run `work-on-issue 7` inside `work`, with the GitHub lookups stubbed."""
+    monkeypatch.chdir(work)
+    monkeypatch.setattr(woi, "get_repo_info", lambda: ("testowner", "testrepo"))
+    monkeypatch.setattr(woi, "is_wiki_repo", lambda: False)
+    monkeypatch.setattr(
+        woi, "fetch_issue", lambda *a, **k: {"title": "Some issue", "body": "body"}
+    )
+    monkeypatch.setattr(woi, "find_pr_branch_for_issue", lambda *a, **k: None)
+    woi.main(["7"])
+
+
+def test_main_resets_leftover_remote_branch_with_no_commits_to_current_base(
+    tmp_path, monkeypatch, git_origin
+):
+    """A remote branch pushed by an earlier, abandoned run points at an old
+    main. Reusing it would build this attempt on that stale base; it must be
+    moved to the current origin/main instead (locally and on origin)."""
+    origin, seed = git_origin
+    _git(seed, "push", "-q", "origin", f"HEAD:refs/heads/{BRANCH}")
+    current_main = _commit(seed, "two")
+    _git(seed, "push", "-q", "origin", "HEAD:main")
+
+    work = _clone(tmp_path, origin)
+    _run_main(monkeypatch, work)
+
+    assert _git(work, "rev-parse", "--abbrev-ref", "HEAD") == BRANCH
+    assert _git(work, "rev-parse", "HEAD") == current_main
+    assert _git(origin, "rev-parse", BRANCH) == current_main
+
+
+def test_main_keeps_remote_branch_that_has_its_own_commits(tmp_path, monkeypatch, git_origin):
+    """A remote branch carrying real work is resumed as-is, never reset."""
+    origin, seed = git_origin
+    _git(seed, "checkout", "-q", "-b", BRANCH)
+    wip = _commit(seed, "wip")
+    _git(seed, "push", "-q", "origin", BRANCH)
+    _git(seed, "checkout", "-q", "-")
+    _commit(seed, "two")
+    _git(seed, "push", "-q", "origin", "HEAD:main")
+
+    work = _clone(tmp_path, origin)
+    _run_main(monkeypatch, work)
+
+    assert _git(work, "rev-parse", "HEAD") == wip
+    assert _git(origin, "rev-parse", BRANCH) == wip
+
+
+def test_main_keeps_local_branch_with_unpushed_commits_over_empty_remote(
+    tmp_path, monkeypatch, git_origin
+):
+    """The remote copy being empty isn't enough to reset: unpushed local
+    commits on the same branch must survive."""
+    origin, seed = git_origin
+    _git(seed, "push", "-q", "origin", f"HEAD:refs/heads/{BRANCH}")
+    _commit(seed, "two")
+    _git(seed, "push", "-q", "origin", "HEAD:main")
+
+    work = _clone(tmp_path, origin)
+    _git(work, "checkout", "-q", "-b", BRANCH, f"origin/{BRANCH}")
+    local_wip = _commit(work, "local-wip")
+    _git(work, "checkout", "-q", "main")
+
+    _run_main(monkeypatch, work)
+
+    assert _git(work, "rev-parse", "HEAD") == local_wip
 
 
 def test_create_branch_includes_auth_header_when_token_provided():
