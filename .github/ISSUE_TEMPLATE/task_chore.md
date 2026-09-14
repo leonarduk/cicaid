@@ -1,47 +1,40 @@
 ---
-name: Bug report
-about: Report something that is broken or behaving incorrectly
+name: Task/Chore
+about: Non-feature, non-bug maintenance work (refactoring, dependency updates, CI improvements)
 title: ""
-labels: bug
+labels: chore
 assignees: ""
 ---
 
 ## What
 
-<!-- What is broken? Describe the observed behavior, including exact error
-messages, screenshots, or logs where relevant. -->
+<!-- What maintenance work needs to be done? -->
 
 ## Why
 
-<!-- Why does this matter? What's the user/dev impact of leaving it broken? -->
+<!-- Why is this needed now? What risk, drift, or friction does it address? -->
 
 ## How
 
-<!-- Steps to reproduce, and (if you know it) what the fix likely involves. -->
-
-1.
-2.
-3.
-
-**Expected behavior:**
-
-**Actual behavior:**
-
-**Environment:** (backend/frontend/CDK, browser, OS, commit/branch)
+<!-- Outline the intended approach at a high level. Link to affected files or
+areas of the codebase if known. -->
 
 ## Files Affected
 
 <!-- List the specific file paths (from the repo root) that need to be
-changed, added, or deleted to fix this. Use one path per line. -->
+changed, added, or deleted to implement this. Use one path per line. -->
 
 ## Constraints
 
-<!-- Anything the fix must not break, e.g. "must not change the public API
-shape" or "must preserve bash/PowerShell parity". -->
+<!-- Anything the implementation must respect, e.g. "no behavior changes",
+"must confirm licensing decisions before implementing", scope boundaries,
+backwards compatibility requirements. -->
 
 ## LLM tier
 
-<!-- If this will be worked by an AI agent, suggest a tier: haiku / sonnet / opus -->
+<!-- If this will be worked by an AI agent, suggest a tier and briefly justify
+it: haiku (mechanical/additive) / sonnet (judgment required) / opus (complex,
+cross-cutting) -->
 
 ## Value
 
