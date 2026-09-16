@@ -1,0 +1,19 @@
+# Local check list for cicaid-devtools' own `cicaid run-ci-checks`.
+#
+# Without this file, the tool falls back to its own DEFAULT_CHECKS, which
+# are actually allotmint's checks (a `python scripts/check_contract_version_sync.py`
+# script, mypy over a `backend/` package, npm frontend checks, etc.) — none
+# of which exist in this repo. That fallback made every issue-worm-pro
+# verification run against this repo fail on unrelated, nonexistent
+# commands before the actual diff was ever meaningfully checked. This
+# mirrors .github/workflows/test.yml's `pytest` job instead (the
+# `validate-distributions` job needs a full sdist/wheel build and isn't a
+# useful fast local check).
+
+[[checks]]
+name = "tests"
+description = "Unit test suite with coverage"
+workflow = ".github/workflows/test.yml (pytest)"
+commands = [
+    "pytest --cov=cicaid_devtools --cov-report=term-missing",
+]
