@@ -435,6 +435,7 @@ def test_abbreviations_for_own_commands_are_unique_and_expected():
         "graphify-repos": "gr",
         "merge-pr": "mp",
         "repo-privacy": "rp",
+        "onboard-issue-worm": "oi",
     }
     commands = cli.discover_commands()
     abbreviations = cli._abbreviations(commands)

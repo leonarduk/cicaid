@@ -4,14 +4,15 @@ import pytest
 
 from cicaid_devtools.run_ci_checks import (
     Check,
-    DEFAULT_CHECKS,
+    EXAMPLE_ALLOTMINT_CHECKS,
     load_checks,
     select_checks,
 )
 
 
-def test_load_checks_falls_back_to_default_when_no_config(tmp_path):
-    assert load_checks(tmp_path) == DEFAULT_CHECKS
+def test_load_checks_raises_when_no_config(tmp_path):
+    with pytest.raises(SystemExit, match=r"No \.cicaid-checks\.toml found"):
+        load_checks(tmp_path)
 
 
 def test_load_checks_reads_toml_config(tmp_path):
@@ -53,19 +54,19 @@ def test_load_checks_missing_required_key_raises(tmp_path):
 
 def test_select_checks_all():
     args = _args(all=True, check=None)
-    assert select_checks(args, DEFAULT_CHECKS) == list(DEFAULT_CHECKS)
+    assert select_checks(args, EXAMPLE_ALLOTMINT_CHECKS) == list(EXAMPLE_ALLOTMINT_CHECKS)
 
 
 def test_select_checks_by_name():
     args = _args(all=False, check=["frontend"])
-    result = select_checks(args, DEFAULT_CHECKS)
+    result = select_checks(args, EXAMPLE_ALLOTMINT_CHECKS)
     assert [c.name for c in result] == ["frontend"]
 
 
 def test_select_checks_unknown_name_raises():
     args = _args(all=False, check=["not-a-real-check"])
     with pytest.raises(SystemExit):
-        select_checks(args, DEFAULT_CHECKS)
+        select_checks(args, EXAMPLE_ALLOTMINT_CHECKS)
 
 
 class _Args:

@@ -57,6 +57,10 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "cicaid_devtools.repo_privacy",
         "Prepare a repo for going private (self-hosted runners) or reverse it",
     ),
+    "onboard-issue-worm": (
+        "cicaid_devtools.onboard_issue_worm",
+        "Onboard this repo to leonarduk/issue-worm (workflow, labels, checks config)",
+    ),
 }
 
 # Groups this package's own commands for `cicaid --help` -- purely a display
@@ -74,7 +78,7 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
         "update-prs",
         "merge-pr",
     ),
-    "CI & repo tooling": ("run-ci-checks", "graphify-repos", "repo-privacy"),
+    "CI & repo tooling": ("run-ci-checks", "graphify-repos", "repo-privacy", "onboard-issue-worm"),
 }
 
 
