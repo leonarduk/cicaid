@@ -4,8 +4,14 @@
 Different consumer repos run entirely different stacks (allotmint: pytest/npm/CDK;
 allotmint-mcp: Maven/Java; future repos: who knows), so there is no one check list
 that fits every repo this package is installed into. The check list is read from a
-`.cicaid-checks.toml` file in the target repo's root; DEFAULT_CHECKS (allotmint's
-own checks) is only a fallback for repos that haven't added one yet.
+`.cicaid-checks.toml` file in the target repo's root -- there is no generic
+default. A repo with no config used to silently fall back to allotmint's own
+check list below (EXAMPLE_ALLOTMINT_CHECKS), which meant every check run in a
+repo that had never added its own config hit irrelevant, guaranteed-to-fail
+commands (a nonexistent scripts/check_contract_version_sync.py, a nonexistent
+backend/ package, ...) -- see leonarduk/cicaid#43. A missing config is now a
+loud, actionable error instead of a silent, wrong substitution. Use
+`cicaid onboard-issue-worm` to scaffold a starter file.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from github_repo import get_repo_root  # noqa: E402
 from interactive import is_interactive  # noqa: E402
 
 CONFIG_FILENAME = ".cicaid-checks.toml"
+WIKI_URL = "https://github.com/leonarduk/cicaid/wiki"
 
 
 @dataclass(frozen=True)
@@ -34,11 +41,10 @@ class Check:
     commands: tuple[str, ...]
 
 
-# Fallback used only when the target repo has no .cicaid-checks.toml of its own.
-# This is allotmint's own check list -- not a generic default, just what this
-# package happened to ship with first. Every other consumer repo should add its
-# own config (see README) rather than rely on this.
-DEFAULT_CHECKS = (
+# allotmint's own check list. No longer used as an implicit fallback (see the
+# module docstring) -- kept as sample data for select_checks' own tests, and
+# as a worked example of what a real .cicaid-checks.toml looks like.
+EXAMPLE_ALLOTMINT_CHECKS = (
     Check(
         "backend",
         "Backend integration tests, coverage, type checks, and contract sync",
@@ -124,17 +130,24 @@ def _parse_config(text: str, source: str) -> tuple[Check, ...]:
 
 
 def load_checks(root: Path, config_path: Path | None = None) -> tuple[Check, ...]:
-    """Load this repo's check list from .cicaid-checks.toml, or fall back to DEFAULT_CHECKS.
+    """Load this repo's check list from .cicaid-checks.toml.
 
-    An explicit --config path that doesn't exist is an error (the user asked for a
-    specific file); the default CONFIG_FILENAME lookup in the repo root is optional
-    and silently falls back so repos that haven't added a config yet still work.
+    Both the explicit --config path and the default CONFIG_FILENAME lookup in
+    the repo root are required to exist: there is no generic fallback check
+    list (see the module docstring for why). Run `cicaid onboard-issue-worm`
+    to scaffold a starter file, or write one by hand -- see the README.
     """
     path = config_path or (root / CONFIG_FILENAME)
     if not path.exists():
         if config_path is not None:
             raise SystemExit(f"--config {path} does not exist.")
-        return DEFAULT_CHECKS
+        raise SystemExit(
+            f"No {CONFIG_FILENAME} found in {root}.\n"
+            "There is no generic default check list -- every repo's checks are "
+            "different. Add one describing this repo's real checks (see "
+            f"{WIKI_URL}), or run `cicaid onboard-issue-worm` to scaffold a "
+            "starter file."
+        )
     return _parse_config(path.read_text(encoding="utf-8"), str(path))
 
 
