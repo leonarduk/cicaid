@@ -260,6 +260,58 @@ def ensure_labels(owner: str, repo: str, *, dry_run: bool = False) -> list[str]:
     return touched
 
 
+def worm_pat_instructions(owner: str, repo: str) -> str:
+    """Render the step-by-step WORM_PAT recipe for ``owner/repo``.
+
+    This command never creates the secret itself (see the module docstring),
+    so what it prints *is* the whole handover -- it has to be followable by
+    someone who has never made a fine-grained PAT. Says the same things as
+    the recipe issue-worm-pro's dashboard puts in its setup PR
+    (leonarduk/issue-worm-pro#1813), but as plain text: this is terminal
+    output, not a PR body, so no markdown tables and short enough to read
+    in a shell. Permissions are issue-worm's README "Inputs" table,
+    `github-token` row -- the authoritative list.
+    """
+    return f"""Creating the WORM_PAT secret
+  `secrets.GITHUB_TOKEN` cannot stand in for it: a push made with the built-in
+  token deliberately does not trigger other workflows, so the PR issue-worm
+  opens would never get a CI run, a review, or a required check.
+
+  1. Open https://github.com/settings/personal-access-tokens/new
+  2. Token name: anything you'll recognise later. Expiration: your call --
+     issue-worm starts failing with a 401 the day it expires, so calendar
+     the rotation.
+  3. Resource owner:
+       {owner}
+     If that is an organisation rather than your own account, an org owner
+     has to approve the token before it works.
+  4. Repository access: "Only select repositories", then:
+       {owner}/{repo}
+  5. Repository permissions -- these three, and nothing else is needed
+     (read-only Metadata is added for you):
+       Contents        Read and write   push issue-worm's branch
+       Pull requests   Read and write   open the pull request
+       Issues          Read and write   read: the issue body; write: the live
+                                        progress comment and self-heal saving
+                                        its drafted section back onto the issue
+     `issues: read` is the one people miss -- only the issue-body fetch needs
+     it, and that runs, and fails, before the push and PR steps ever do.
+     `issues: write` is optional: without it those two features silently
+     no-op rather than failing the build. Add Workflows: read and write only
+     if issue-worm should be allowed to edit files under .github/workflows/.
+  6. Generate token, then copy it -- GitHub shows it exactly once.
+  7. Paste it in at
+     https://github.com/{owner}/{repo}/settings/secrets/actions/new
+     -- that is Settings -> Secrets and variables -> Actions, then New
+     repository secret. Name it WORM_PAT, paste the token in, Add secret.
+
+  Or a classic token: https://github.com/settings/tokens/new with the single
+  `repo` scope covers all three permissions above (tick `workflow` too for the
+  same caveat). It is much coarser -- a classic token reaches every repo its
+  owner can -- so prefer the fine-grained one where you have the choice.
+"""
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line options."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -295,6 +347,17 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    # Needed both for the labels below and for the two repo-specific URLs in
+    # the WORM_PAT recipe. A remote we can't read is only fatal for the
+    # labels, which actually have to talk to that repo; the recipe falls back
+    # to placeholders the reader can substitute themselves.
+    try:
+        owner, repo = get_repo_info()
+    except ValueError:
+        if not args.skip_labels:
+            raise
+        owner, repo = "<owner>", "<name>"
+
     workflow_path = root / WORKFLOW_PATH
     workflow_content = render_workflow(runs_on, args.pin, args.model_source)
     if not args.dry_run:
@@ -317,15 +380,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{verb} {CHECKS_CONFIG_PATH}{note}")
 
     if not args.skip_labels:
-        owner, repo = get_repo_info()
         touched = ensure_labels(owner, repo, dry_run=args.dry_run)
         verb = "would create/update" if args.dry_run else "created/updated"
         print(f"{verb} labels: {', '.join(touched)}")
 
     print(
         "\nNext steps (not automated -- these are credentials/require a human):\n"
-        "  1. Create a WORM_PAT repo secret: a fine-grained PAT (or GitHub App token)\n"
-        "     with contents: write, pull-requests: write, and issues: read on this repo.\n"
+        "  1. Create the WORM_PAT repo secret -- step-by-step recipe below.\n"
         + (
             "  2. Add a DEEPSEEK_API_KEY repo secret (--model-source cloud was selected).\n"
             if args.model_source == "cloud"
@@ -334,8 +395,9 @@ def main(argv: list[str] | None = None) -> int:
         + f"  {'3' if args.model_source == 'cloud' else '2'}. Review and commit {WORKFLOW_PATH}"
         + (f" and {CHECKS_CONFIG_PATH}" if checks_written is not None else "")
         + ".\n"
-        "  Apply the `issue-worm` label to an issue to try it."
+        "  Apply the `issue-worm` label to an issue to try it.\n"
     )
+    print(worm_pat_instructions(owner, repo))
     return 0
 
 
