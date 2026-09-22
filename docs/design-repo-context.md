@@ -50,15 +50,31 @@ ui_server.py   520,526 bytes  (11,154 lines)  ~130K tok
 scheduler.py   240,849 bytes  ( 5,432 lines)  ~60K tok
 ```
 
-**Two files are ~half the non-test source.** No retriever fixes that. A
-Coder asked to change `ui_server.py` must emit the whole file back under
-the current `MODE: FULL` contract — ~130K output tokens, which no local
-model will produce coherently at any context size, and which costs more
-than the entire rest of the pipeline on a metered backend.
+**Two files are ~half the non-test source.** No retriever fixes that: a
+30-60K window cannot hold `ui_server.py` at all, so every signal this
+design produces is moot for the file most likely to need changing.
 
-Splitting `ui_server.py` and `scheduler.py` is worth more than this whole
-design, and it is a prerequisite for measuring whether this design helps.
-Treat it as Stage -1.
+> **Correction (2026-09-22).** An earlier revision of this section claimed
+> a Coder must emit the whole of `ui_server.py` back under a `MODE: FULL`
+> contract, at ~130K output tokens. **That is wrong for the shipping pro
+> path.** `issue-worm-pro`'s `agents/coder.py` already defaults
+> `large_file_mode = MODE_EDIT` for files at or above
+> `SIZE_THRESHOLD = 10_000` bytes, and `issue-worm`'s `workspace.py`
+> already parses and applies those SEARCH/REPLACE blocks
+> (`_parse_search_replace_blocks`, `_apply_search_replace`). At 520KB
+> `ui_server.py` is far above that threshold, so `NativeCoder` asks for
+> targeted edits, and output scales with the change rather than the file.
+> The `MODE: FULL` claim holds only for the **free shell**, whose
+> `coder.py` hardcodes "Always use MODE: FULL" regardless of size — a
+> narrower defect, tracked as leonarduk/issue-worm#462.
+
+That correction weakens the case for splitting these files but does not
+remove it: the *input* side is untouched, since a Coder editing
+`ui_server.py` is still sent its ~130K tokens of content whatever edit
+format it replies in. Splitting remains worth doing, on input budget and
+on ordinary maintainability grounds, but it is no longer the output-cost
+emergency this section originally described. Treat it as Stage -1 — still
+ahead of the ranker, no longer ahead of everything.
 
 ### 3. The Coder cannot use "all the code", by construction
 
@@ -285,8 +301,10 @@ scenario where Graphify clearly wins over a hand-rolled `ast` pass.
 ## Staging
 
 - **Stage -1 — split `ui_server.py` and `scheduler.py`.** Independent of
-  all of this, larger in effect than all of this, and a prerequisite for
-  measuring it. 760KB across two files is the actual context problem.
+  all of this and a prerequisite for measuring it: 760KB across two files
+  is what a 30-60K window cannot hold. (Per the correction in §2 this is
+  an *input*-budget argument; the pro Coder already emits targeted edits,
+  so it is not the output-cost emergency an earlier revision claimed.)
 - **Stage 0 — `cicaid context eval`.** Harness + corpus, no ranker. Baseline
   = today's behaviour (`_summarise_repo`'s sampled listing). Also run
   `benchmark_loop.py`'s arm 5 `triage_scoped`, which the prior doc notes
