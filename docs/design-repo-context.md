@@ -21,16 +21,16 @@ design follows from it.
 `laptop-egpu-llm`'s own `docs/model-picker.md` records what that window
 costs on the 23.83 GB rig: `qwen3.8-216k` is 11.29 GB of weights plus
 **~8 GB of KV cache reserved on every load**, because Ollama reserves for
-the manifest's `num_ctx` whether or not the request uses it. That is
-~19 GB of 23.83 GB gone before a single token is generated, and it is paid
-on short prompts too.
+the manifest's `num_ctx` whether or not the request uses it. That doc puts
+the total at **~18–19 GB of the 23.83 GB**, gone before a single token is
+generated and paid on short prompts too.
 
 So the choice is not "200K, or RAG". It is "pay ~8 GB and accept degraded
 long-context recall, or run a smaller window with better weights or a
 better quant". Retrieval that lets a 30–60K window do the job of a 200K one
-buys back ~6 GB of VRAM — which on this hardware is a whole quantisation
-tier. **That is a stronger argument for retrieval than 'the repo doesn't
-fit', and it is the one to make.**
+reclaims most of that ~8 GB — which on this hardware is a whole
+quantisation tier. **That is a stronger argument for retrieval than 'the
+repo doesn't fit', and it is the one to make.**
 
 ### 2. On these repos, it is a file-size problem, not a retrieval problem
 
