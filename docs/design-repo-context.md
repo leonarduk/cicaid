@@ -64,9 +64,16 @@ design produces is moot for the file most likely to need changing.
 > (`_parse_search_replace_blocks`, `_apply_search_replace`). At 520KB
 > `ui_server.py` is far above that threshold, so `NativeCoder` asks for
 > targeted edits, and output scales with the change rather than the file.
-> The `MODE: FULL` claim holds only for the **free shell**, whose
-> `coder.py` hardcodes "Always use MODE: FULL" regardless of size — a
-> narrower defect, tracked as leonarduk/issue-worm#462.
+> `MODE: FULL` is pinned *unconditionally* in exactly one place: the
+> **free shell**'s `coder.py:468`, whose `_build_format_instructions`
+> says "Always use MODE: FULL ... not a diff" regardless of size. Every
+> other non-test reference either selects the mode conditionally
+> (`agents/coder.py:308` inside `if small_files:`, `orchestrator.py:80`
+> for files that do not exist yet) or is marker grammar spelling out the
+> response format (`coder.py:464`, `agents/coder.py:298`,
+> `analyser.py:163`, plus `workspace.py`'s constant and parser). A
+> narrower defect, tracked as leonarduk/issue-worm#462; the same
+> enumeration is in `issue-worm-pro`'s `docs/design-rag-retrieval.md`.
 
 That correction weakens the case for splitting these files but does not
 remove it: the *input* side is untouched, since a Coder editing
