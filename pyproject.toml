@@ -47,6 +47,7 @@ cicaid-mcp = "cicaid_devtools.mcp_server:main"
 merge-pr = "cicaid_devtools.merge_pr:main"
 repo-privacy = "cicaid_devtools.repo_privacy:main"
 onboard-issue-worm = "cicaid_devtools.onboard_issue_worm:main"
+check-links = "cicaid_devtools.check_links:main"
 
 [tool.setuptools_scm]
 fallback_version = "0.1.0"

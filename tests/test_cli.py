@@ -436,6 +436,7 @@ def test_abbreviations_for_own_commands_are_unique_and_expected():
         "merge-pr": "mp",
         "repo-privacy": "rp",
         "onboard-issue-worm": "oi",
+        "check-links": "cl",
     }
     commands = cli.discover_commands()
     abbreviations = cli._abbreviations(commands)
