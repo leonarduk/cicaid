@@ -67,6 +67,33 @@ an unconfirmed issue update) exit with a clear error instead, so an AI
 driver (Claude Code, aider, ...) can rely on one env var rather than a
 different flag per command.
 
+## Link checking
+
+`cicaid check-links` validates markdown links in tracked `*.md` files:
+
+- **Same-repo relative links** — the target path must exist in the working
+  tree; a `#anchor` must match a heading in the target file.
+- **Sibling-repo blob links** (`github.com/leonarduk/<repo>/blob/<ref>/<path>`)
+  — resolved against the sibling checkout (the directory next to this repo)
+  via `git cat-file`. A path that exists only on an unmerged branch produces
+  a warning; a path missing at the stated ref is an error.
+- **External `http(s)` links** — skipped (out of scope for v1).
+
+```bash
+cicaid check-links            # check all tracked .md files
+cicaid check-links --root /path/to/repo
+```
+
+Wire it into your `.cicaid-checks.toml` so it runs with `cicaid run-ci-checks`:
+
+```toml
+[[checks]]
+name = "links"
+description = "Validate markdown links"
+workflow = ".github/workflows/ci.yml"
+commands = ["cicaid check-links"]
+```
+
 ## Knowledge-graph orchestration across repos
 
 `graphify-repos` runs [graphify](https://pypi.org/project/graphifyy/) (a

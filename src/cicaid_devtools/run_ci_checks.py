@@ -91,6 +91,12 @@ EXAMPLE_ALLOTMINT_CHECKS = (
         ".github/workflows/ci.yml (validate-backend-deps)",
         ("pip install --dry-run -r backend/requirements.txt",),
     ),
+    Check(
+        "links",
+        "Validate markdown links (same-repo and sibling-repo references)",
+        ".github/workflows/ci.yml",
+        ("cicaid check-links",),
+    ),
 )
 
 

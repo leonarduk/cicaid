@@ -61,6 +61,10 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "cicaid_devtools.onboard_issue_worm",
         "Onboard this repo to leonarduk/issue-worm (workflow, labels, checks config)",
     ),
+    "check-links": (
+        "cicaid_devtools.check_links",
+        "Validate markdown links in tracked files",
+    ),
 }
 
 # Groups this package's own commands for `cicaid --help` -- purely a display
@@ -78,7 +82,13 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
         "update-prs",
         "merge-pr",
     ),
-    "CI & repo tooling": ("run-ci-checks", "graphify-repos", "repo-privacy", "onboard-issue-worm"),
+    "CI & repo tooling": (
+        "run-ci-checks",
+        "graphify-repos",
+        "repo-privacy",
+        "onboard-issue-worm",
+        "check-links",
+    ),
 }
 
 
