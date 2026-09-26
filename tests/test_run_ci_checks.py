@@ -7,7 +7,26 @@ from cicaid_devtools.run_ci_checks import (
     EXAMPLE_ALLOTMINT_CHECKS,
     load_checks,
     select_checks,
+    shell_command,
 )
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("./mvnw -B verify", ".\\mvnw -B verify"),
+        ("./mvnw", ".\\mvnw"),
+        ("./scripts/check.sh --fast", ".\\scripts\\check.sh --fast"),
+        ("python -m pytest -q ./tests", "python -m pytest -q ./tests"),
+        ("npm test", "npm test"),
+    ],
+)
+def test_shell_command_rewrites_leading_dot_slash_on_windows(command, expected):
+    assert shell_command(command, is_windows=True) == expected
+
+
+def test_shell_command_leaves_posix_commands_alone():
+    assert shell_command("./mvnw -B verify", is_windows=False) == "./mvnw -B verify"
 
 
 def test_load_checks_raises_when_no_config(tmp_path):

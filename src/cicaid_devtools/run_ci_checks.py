@@ -17,6 +17,7 @@ loud, actionable error instead of a silent, wrong substitution. Use
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import tomllib
@@ -217,6 +218,27 @@ def select_checks(args: argparse.Namespace, checks: tuple[Check, ...]) -> list[C
     return prompt_for_checks(checks)
 
 
+def shell_command(command: str, is_windows: bool | None = None) -> str:
+    """Adapt a POSIX-style check command so ``cmd.exe`` can run it on Windows.
+
+    Check lists mirror CI workflows, so they are written for a POSIX shell --
+    e.g. allotmint-mcp's ``./mvnw -B verify``. With ``shell=True`` on Windows
+    the command runs under ``cmd.exe``, which reads ``./mvnw`` as the program
+    ``.`` and fails every run with "'.' is not recognized". Rewrite the leading
+    program ``./path/to/prog`` to ``.\\path\\to\\prog``: cmd then resolves it
+    against the working directory and picks up the Windows sibling via
+    PATHEXT (``mvnw`` -> ``mvnw.cmd``). The ``.\\`` prefix is kept on purpose --
+    a bare ``mvnw`` is not found when NoDefaultCurrentDirectoryInExePath is
+    set, as it is in some agent shells. Other commands pass through unchanged.
+    """
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    if not is_windows or not command.startswith("./"):
+        return command
+    program, sep, rest = command.partition(" ")
+    return program.replace("/", "\\") + sep + rest
+
+
 def run_checks(checks: list[Check], root: Path, dry_run: bool, keep_going: bool) -> int:
     """Run selected commands, returning a process-style status code."""
     failures = 0
@@ -226,7 +248,7 @@ def run_checks(checks: list[Check], root: Path, dry_run: bool, keep_going: bool)
             print(f"$ {command}", flush=True)
             if dry_run:
                 continue
-            result = subprocess.run(command, cwd=root, shell=True, check=False)
+            result = subprocess.run(shell_command(command), cwd=root, shell=True, check=False)
             if result.returncode:
                 failures += 1
                 print(f"FAILED ({result.returncode}): {command}", file=sys.stderr)
