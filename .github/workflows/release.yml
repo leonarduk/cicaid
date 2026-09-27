@@ -58,11 +58,17 @@ jobs:
             echo "::warning::DISPATCH_TOKEN is not set; skipping cicaid-pro/issue-worm dependency-update dispatch. Add a fine-grained PAT with Actions:write on leonarduk/cicaid-pro and leonarduk/issue-worm as the DISPATCH_TOKEN repo secret."
             exit 0
           fi
+          # Best-effort: the release is already published by this point, so a
+          # dispatch failure (bad token scope, workflow renamed/removed
+          # downstream) must not turn a successful release red. Each target's
+          # next scheduled poll still catches this release either way.
           gh workflow run update-dependencies.yml \
             --repo leonarduk/cicaid-pro \
-            -f dependency=cicaid-devtools
+            -f dependency=cicaid-devtools || \
+            echo "::warning::Could not dispatch update-dependencies.yml in leonarduk/cicaid-pro — it will pick up this release on its next scheduled run instead."
           gh workflow run update-dependencies.yml \
-            --repo leonarduk/issue-worm
+            --repo leonarduk/issue-worm || \
+            echo "::warning::Could not dispatch update-dependencies.yml in leonarduk/issue-worm — it will pick up this release on its next scheduled run instead."
 
       - name: Update README to this release's version
         run: python scripts/bump_readme_version.py "${{ github.ref_name }}"
