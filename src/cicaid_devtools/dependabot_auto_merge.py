@@ -97,7 +97,9 @@ class PullRequest:
     checks: list[dict] = field(default_factory=list)
 
 
-def _run_gh_once(args: list[str], timeout: int = GH_TIMEOUT_SECONDS) -> subprocess.CompletedProcess[str]:
+def _run_gh_once(
+    args: list[str], timeout: int = GH_TIMEOUT_SECONDS
+) -> subprocess.CompletedProcess[str]:
     """Run a single `gh` CLI command scoped to the resolved repo. Never raises.
 
     A timed-out process is reported as a failing CompletedProcess rather than
@@ -139,7 +141,7 @@ def run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
             wait_seconds = GH_RETRY_BACKOFF_SECONDS * attempt
             logger.warning(
                 "gh %s failed (attempt %s/%s): %s -- retrying in %ss",
-                ' '.join(args),
+                " ".join(args),
                 attempt,
                 GH_RETRY_ATTEMPTS,
                 result.stderr.strip(),
@@ -242,9 +244,29 @@ def _latest_checks_by_name(checks: list[dict]) -> list[dict]:
     for check in checks:
         key = (check.get("workflowName") or "", check.get("name") or "")
         existing = latest.get(key)
-        if existing is None or (check.get("completedAt") or "") >= (existing.get("completedAt") or ""):
+        if existing is None or (check.get("completedAt") or "") >= (
+            existing.get("completedAt") or ""
+        ):
             latest[key] = check
     return list(latest.values())
+
+
+def _unresolved_checks(checks: list[dict]) -> list[dict]:
+    """Return the latest-run checks that are still pending or didn't succeed.
+
+    Used both by checks_have_passed() and to build a diagnostic SKIP message,
+    so a run reports *which* check(s) are holding a PR back instead of a bare
+    "checks not all passed".
+    """
+    unresolved = []
+    for check in _latest_checks_by_name(checks):
+        conclusion = (check.get("conclusion") or "").upper()
+        status = (check.get("status") or "").upper()
+        if status and status != "COMPLETED":
+            unresolved.append(check)
+        elif conclusion not in ("SUCCESS", "NEUTRAL", "SKIPPED"):
+            unresolved.append(check)
+    return unresolved
 
 
 def checks_have_passed(checks: list[dict]) -> bool:
@@ -255,16 +277,22 @@ def checks_have_passed(checks: list[dict]) -> bool:
     check". Duplicate entries for the same check (see _latest_checks_by_name)
     are collapsed to their latest run before evaluation.
     """
+    return bool(checks) and not _unresolved_checks(checks)
+
+
+def _describe_unresolved_checks(checks: list[dict]) -> str:
+    """One-line summary of why checks_have_passed() returned False, for logging."""
     if not checks:
-        return False
-    for check in _latest_checks_by_name(checks):
-        conclusion = (check.get("conclusion") or "").upper()
-        status = (check.get("status") or "").upper()
-        if status and status != "COMPLETED":
-            return False
-        if conclusion not in ("SUCCESS", "NEUTRAL", "SKIPPED"):
-            return False
-    return True
+        return "no checks reported yet"
+    unresolved = _unresolved_checks(checks)
+    if not unresolved:
+        return "no checks reported yet"
+    parts = []
+    for check in unresolved:
+        name = check.get("name") or check.get("workflowName") or "?"
+        state = check.get("conclusion") or check.get("status") or "PENDING"
+        parts.append(f"{name}={state}")
+    return ", ".join(parts)
 
 
 def is_mergeable(pr: PullRequest) -> bool:
@@ -300,7 +328,9 @@ def merge_and_delete(pr: PullRequest, dry_run: bool, admin: bool = False) -> boo
     override the up-to-date requirement.
     """
     prefix = "[DRY RUN] " if dry_run else ""
-    logger.info(f"{prefix}Merging PR #{pr.number} ({pr.title}) and deleting branch '{pr.head_ref_name}'")
+    logger.info(
+        f"{prefix}Merging PR #{pr.number} ({pr.title}) and deleting branch '{pr.head_ref_name}'"
+    )
     if dry_run:
         return True
 
@@ -356,7 +386,10 @@ def process_pr(pr: PullRequest, dry_run: bool, behind_strategy: str = "admin") -
     not treated as a failure.
     """
     if not checks_have_passed(pr.checks):
-        logger.info(f"SKIP: PR #{pr.number} ({pr.title}) -- checks not all passed")
+        logger.info(
+            f"SKIP: PR #{pr.number} ({pr.title}) -- checks not all passed "
+            f"({_describe_unresolved_checks(pr.checks)})"
+        )
         return True
     resolve_mergeability(pr)
     if not is_mergeable(pr):
