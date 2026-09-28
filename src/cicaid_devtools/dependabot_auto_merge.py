@@ -230,6 +230,50 @@ def resolve_mergeability(pr: PullRequest) -> None:
             time.sleep(MERGEABILITY_REFRESH_WAIT_SECONDS)
 
 
+def _check_name(check: dict) -> str:
+    """Display name for a statusCheckRollup entry.
+
+    A CheckRun (GitHub Actions job) has `name`/`workflowName`. A legacy
+    commit status (StatusContext -- e.g. an external CI or a Vercel/Netlify
+    deployment posted via the old Statuses API) has neither; it has
+    `context` instead.
+    """
+    return check.get("name") or check.get("workflowName") or check.get("context") or "?"
+
+
+def _check_timestamp(check: dict) -> str:
+    """Completion timestamp for a statusCheckRollup entry, for latest-wins dedup.
+
+    CheckRun uses `completedAt`; StatusContext uses `createdAt` (it has no
+    separate start/complete pair).
+    """
+    return check.get("completedAt") or check.get("createdAt") or ""
+
+
+def _check_status_conclusion(check: dict) -> tuple[str, str]:
+    """Normalize a statusCheckRollup entry to (status, conclusion), both upper-cased.
+
+    A CheckRun already reports `status`/`conclusion` directly. A legacy
+    StatusContext instead reports a single `state`
+    (SUCCESS/PENDING/ERROR/FAILURE/EXPECTED) -- without mapping it here, a
+    StatusContext entry has no status/conclusion at all and would look
+    permanently pending in checks_have_passed(), even once it has actually
+    succeeded.
+    """
+    status = (check.get("status") or "").upper()
+    conclusion = (check.get("conclusion") or "").upper()
+    if status or conclusion:
+        return status, conclusion
+    state = (check.get("state") or "").upper()
+    if state in ("SUCCESS", "EXPECTED"):
+        return "COMPLETED", "SUCCESS"
+    if state in ("ERROR", "FAILURE"):
+        return "COMPLETED", "FAILURE"
+    if state == "PENDING":
+        return "IN_PROGRESS", ""
+    return "", ""
+
+
 def _latest_checks_by_name(checks: list[dict]) -> list[dict]:
     """Collapse `statusCheckRollup` to the most recent run per (workflow, check) name.
 
@@ -242,11 +286,9 @@ def _latest_checks_by_name(checks: list[dict]) -> list[dict]:
     """
     latest: dict[tuple[str, str], dict] = {}
     for check in checks:
-        key = (check.get("workflowName") or "", check.get("name") or "")
+        key = (check.get("workflowName") or "", _check_name(check))
         existing = latest.get(key)
-        if existing is None or (check.get("completedAt") or "") >= (
-            existing.get("completedAt") or ""
-        ):
+        if existing is None or _check_timestamp(check) >= _check_timestamp(existing):
             latest[key] = check
     return list(latest.values())
 
@@ -260,8 +302,7 @@ def _unresolved_checks(checks: list[dict]) -> list[dict]:
     """
     unresolved = []
     for check in _latest_checks_by_name(checks):
-        conclusion = (check.get("conclusion") or "").upper()
-        status = (check.get("status") or "").upper()
+        status, conclusion = _check_status_conclusion(check)
         if status and status != "COMPLETED":
             unresolved.append(check)
         elif conclusion not in ("SUCCESS", "NEUTRAL", "SKIPPED"):
@@ -289,8 +330,15 @@ def _describe_unresolved_checks(checks: list[dict]) -> str:
         return "no checks reported yet"
     parts = []
     for check in unresolved:
-        name = check.get("name") or check.get("workflowName") or "?"
-        state = check.get("conclusion") or check.get("status") or "PENDING"
+        name = _check_name(check)
+        _, conclusion = _check_status_conclusion(check)
+        state = (
+            check.get("conclusion")
+            or check.get("status")
+            or check.get("state")
+            or conclusion
+            or "PENDING"
+        )
         parts.append(f"{name}={state}")
     return ", ".join(parts)
 

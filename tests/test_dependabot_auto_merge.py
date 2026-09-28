@@ -66,6 +66,33 @@ def test_describe_unresolved_checks_when_no_checks_reported() -> None:
     assert dam._describe_unresolved_checks([]) == "no checks reported yet"
 
 
+def _legacy_status(context: str, state: str) -> dict:
+    """A legacy commit-status entry (StatusContext), e.g. from an external CI."""
+    return {"context": context, "state": state}
+
+
+def test_checks_have_passed_true_for_successful_legacy_status() -> None:
+    checks = [_check("lint"), _legacy_status("vercel/preview", "SUCCESS")]
+    assert dam.checks_have_passed(checks) is True
+
+
+def test_checks_have_passed_false_for_pending_legacy_status() -> None:
+    checks = [_check("lint"), _legacy_status("vercel/preview", "PENDING")]
+    assert dam.checks_have_passed(checks) is False
+
+
+def test_checks_have_passed_false_for_failed_legacy_status() -> None:
+    checks = [_check("lint"), _legacy_status("vercel/preview", "ERROR")]
+    assert dam.checks_have_passed(checks) is False
+
+
+def test_describe_unresolved_checks_names_legacy_status_context() -> None:
+    checks = [_legacy_status("vercel/preview", "PENDING")]
+    description = dam._describe_unresolved_checks(checks)
+    assert description == "vercel/preview=PENDING"
+    assert "?=" not in description
+
+
 def test_process_pr_skip_message_names_failing_check(caplog) -> None:
     pr = dam.PullRequest(
         number=8092,
